@@ -1,0 +1,274 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+@font-face {
+    font-family: 'Patua_One';
+    src: url("../fonts/Patua_One/PatuaOne-Regular.ttf");
+    font-style: normal;
+    font-weight: normal;
+}
+
+@font-face {
+    font-family: 'Play-Bold';
+    src: url("../fonts/Play/Play-Bold.ttf");
+    font-style: normal;
+    font-weight: normal;
+}
+
+@font-face {
+    font-family: 'Play-Regular';
+    src: url("../fonts/Play/Play-Regular.ttf");
+    font-style: normal;
+    font-weight: normal;
+}
+
+.container-app {
+    width: 1024px;
+    min-height: 100vh;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.titulo-app {
+    width: 100%;
+    margin-bottom: 30px;
+    text-align: center;
+}
+
+h1 {
+    font-family: 'Patua_One';
+    display: inline-block;
+    padding: 10px 20px;
+    font-size: 40px;
+    background: linear-gradient(to right, #ec008c, #fc6767);
+    border-radius: 20px;
+    color: #ffffff;
+    box-shadow: 0 3px 6px rgba(0,0,0,0.16);
+}
+
+.control-panel {
+    display: flex;
+    justify-content: space-between;
+    width: 500px;
+    height: 150px;
+    border-radius: 30px;
+    box-shadow: 0 3px 6px rgba(0,0,0,0.16);
+}
+
+.panel {
+    width: 33.33%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.numero-wrap {
+    display: flex;
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    /*background-color: #fc6767;*/
+    border: 10px solid;
+    justify-content: center;
+    align-items: center;
+    /*animation: animacion 3s infinite*/;
+}
+
+.numero {
+    width: 80px;
+    height: 80px;
+    background-color: #ffffff;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+}
+
+.letra, .numero-item {
+    text-align: center;
+    font-family: 'Patua_One';
+}
+
+.letra {
+    font-size: 20px;
+}
+
+.numero-item {
+    font-size: 40px;
+}
+
+@keyframes animacion {
+    0% {
+        /*transform: scale(0.5);*/
+        border-color: transparent;
+        border-top-color: #ffffff;
+        transform: rotate(0deg);
+    }
+    /*25% {
+        transform: scale(1);
+        !*box-shadow: 0 3px 6px rgba(0,0,0,0.16);*!
+        border-top-color: transparent;
+        border-right-color: #ffffff;
+    }
+
+    50% {
+        border-right-color: transparent;
+        border-bottom-color: #ffffff;
+    }
+
+    75% {
+        border-bottom-color: transparent;
+        border-left-color: #ffffff;
+    }*/
+
+    100% {
+        /*transform: scale(0.5);*/
+        border-color: transparent;
+        transform: rotate(360deg);
+    }
+}
+
+.icono {
+    margin-bottom: 20px;
+    text-align: center;
+}
+.icon-timer {
+    font-size: 40px;
+    color: #3e3e3e;
+}
+
+.tiempo {
+    font-size: 40px;
+    font-family: 'Play-Bold';
+}
+
+.column {
+    flex-direction: column;
+}
+
+.botones-wrap {
+    margin-bottom: 20px;
+}
+
+.icon-play-btn, .icon-stop-btn {
+    border: none;
+    border-radius: 50%;
+    padding: 10px;
+}
+
+.icon-play-btn {
+    background-color: #2dce89;
+    cursor: pointer;
+}
+
+.icon-stop-btn {
+    background-color: #f5365c;
+    cursor: pointer;
+}
+
+.icon-play_arrow, .icon-stop {
+    font-size: 30px;
+    color: white;
+}
+
+.icon-pause {
+    font-size: 30px;
+    color: white;
+}
+
+.icon-pause:active {
+    box-shadow: 0 3px 6px rgba(0,0,0,0.16);
+}
+.icon-stop-btn:active {
+    box-shadow: 0 3px 6px rgba(0,0,0,0.16);
+}
+
+.icon-play-btn:active {
+    box-shadow: 0 3px 6px rgba(0,0,0,0.16);
+}
+
+.btn-bingo {
+}
+
+.bingo {
+    font-size: 30px;
+    font-family: 'Patua_One';
+    padding: 5px 10px;
+    color: #ffffff;
+    background-color: #5e72e4;
+    border-radius: 15px;
+    border: none;
+}
+
+.bingo:active {
+    box-shadow: 0 3px 6px rgba(0,0,0,0.16);
+}
+
+.numeros-panel {
+    margin-top: 20px;
+    width: 100%;
+    box-shadow: 0 3px 6px rgba(0,0,0,0.16);
+    padding: 20px 40px;
+    border-radius: 30px;
+}
+
+.letras {
+    text-align: center;
+    height: 50px;
+    display: flex;
+    justify-content: space-around;
+}
+
+h3 {
+    font-family: 'Patua_One';
+    margin: auto;
+    width: 49px;
+    display: inline-block;
+    font-size: 40px;
+    color: #ffffff;
+}
+
+.letra-color-1 {
+    background-color: #f5365c;
+}
+
+.letra-color-2 {
+    background-color: #ffd600;
+}
+
+.letra-color-3 {
+    background-color: #2dce89;
+}
+
+.letra-color-4 {
+    background-color: #5e72e4;
+}
+
+.letra-color-5 {
+    background-color: #8965e0;
+}
+
+.num-wrap {
+    font-family: 'Patua_One';
+    margin: auto;
+    height: 49px;
+    width: 49px;
+    display: inline-block;
+    font-size: 40px;
+    color: #3e3e3e;
+    background-color: #e9ecef;
+    border-radius: 50%;
+
+}
+
+.blanco {
+    background-color: white; !important;
+}

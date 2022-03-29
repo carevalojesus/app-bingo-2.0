@@ -1,0 +1,61 @@
+@font-face {
+  font-family: 'icomoon';
+  src:  url('../icons/icomoon.eot?w50oug');
+  src:  url('../icons/icomoon.eot?w50oug#iefix') format('embedded-opentype'),
+    url('../icons/icomoon.ttf?w50oug') format('truetype'),
+    url('../icons/icomoon.woff?w50oug') format('woff'),
+    url('../icons/icomoon.svg?w50oug#icomoon') format('svg');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+[class^="icon-"], [class*=" icon-"] {
+  /* use !important to prevent issues with browser extensions that change fonts */
+  font-family: 'icomoon' !important;
+  speak: none;
+  font-style: normal;
+  font-weight: normal;
+  font-variant: normal;
+  text-transform: none;
+  line-height: 1;
+  
+  /* Enable Ligatures ================ */
+  letter-spacing: 0;
+  -webkit-font-feature-settings: "liga";
+  -moz-font-feature-settings: "liga=1";
+  -moz-font-feature-settings: "liga";
+  -ms-font-feature-settings: "liga" 1;
+  font-feature-settings: "liga";
+  -webkit-font-variant-ligatures: discretionary-ligatures;
+  font-variant-ligatures: discretionary-ligatures;
+
+  /* Better Font Rendering =========== */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.icon-isotipo-Galilei:before {
+  content: "\e905";
+}
+.icon-av_timer:before {
+  content: "\e01b";
+}
+.icon-pause:before {
+  content: "\e034";
+}
+.icon-play_arrow:before {
+  content: "\e037";
+}
+.icon-stop:before {
+  content: "\e047";
+}
+.icon-timer:before {
+  content: "\e425";
+}
+.icon-volume_off:before {
+  content: "\e04f";
+}
+.icon-volume_up:before {
+  content: "\e050";
+}
