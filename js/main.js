@@ -1,207 +1,147 @@
-//variables
+// Configuración de cada columna del bingo (75 bolas, 15 por letra)
+const LETRAS = [
+    { letra: 'B', id: 'letra-b', color: '#f5365c' },
+    { letra: 'I', id: 'letra-i', color: '#ffd600' },
+    { letra: 'N', id: 'letra-n', color: '#2dce89' },
+    { letra: 'G', id: 'letra-g', color: '#5e72e4' },
+    { letra: 'O', id: 'letra-o', color: '#8965e0' },
+];
 
-let letraB = document.getElementById('letra-b');
-let letraI = document.getElementById('letra-i');
-let letraN = document.getElementById('letra-n');
-let letraG = document.getElementById('letra-g');
-let letraO = document.getElementById('letra-o');
+const TOTAL_BOLAS = 75;
+const INTERVALO_BOLA = 8000; // ms entre bola y bola
 
-let numeroLetra = document.getElementById('numeroLetra');
-let numeroBola = document.getElementById('numeroBola');
+// Elementos del DOM
+const numeroLetra = document.getElementById('numeroLetra');
+const numeroBola = document.getElementById('numeroBola');
+const numeroWrap = document.getElementById('numeroWrap');
+const tiempo = document.getElementById('tiempo');
+const playBtn = document.getElementById('playBtn');
+const stopBtn = document.getElementById('stopBtn');
+const bingoBtn = document.getElementById('bingoBtn');
+const iconPlay = document.getElementById('iconPlay');
 
-let tiempo = document.getElementById('tiempo');
-tiempo.textContent = "00:00";
-
-let playBtn = document.getElementById('playBtn');
-let stopBtn = document.getElementById('stopBtn');
-
-let bingobtn = document.getElementById('bingoBtn');
-
-let numeroWrap = document.getElementById('numeroWrap');
-
-let bolos = [];
-
-let iconPlay = document.getElementById('iconPlay');
-let iconStop = document.getElementById('iconStop');
-
-let m=0;
-let s=0;
-
+// Estado del juego
+const bolos = mezclar(Array.from({ length: TOTAL_BOLAS }, (_, i) => i + 1));
 let contador = -1;
+let segundos = 0;
+let generar = null;
+let hora = null;
+let jugando = false;
+let terminado = false;
 
-for (let i = 1; i <= 75; i++) {
-    bolos.push(i);
+tiempo.textContent = '00:00';
+
+// Devuelve la columna (B, I, N, G, O) a la que pertenece un número
+function columnaDe(numero) {
+    return LETRAS[Math.floor((numero - 1) / 15)];
 }
 
-let generar, hora;
-
-console.log(bolos);
+// Mezcla Fisher-Yates
+function mezclar(arreglo) {
+    for (let i = arreglo.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arreglo[i], arreglo[j]] = [arreglo[j], arreglo[i]];
+    }
+    return arreglo;
+}
 
 function numeroPanel() {
-
-    for (let i = 1; i <= 75; i++) {
-
-        let div = document.createElement('div');
+    for (let i = 1; i <= TOTAL_BOLAS; i++) {
+        const div = document.createElement('div');
         div.classList.add('num-wrap');
-
-        if (i < 16) {
-            div.textContent = i;
-            div.setAttribute('id','num'+i);
-            letraB.appendChild(div);
-        }
-
-        if (i > 15 && i < 31) {
-            div.textContent = i;
-            div.setAttribute('id','num'+i);
-            letraI.appendChild(div);
-        }
-
-        if (i > 30 && i < 46) {
-            div.textContent = i;
-            div.setAttribute('id','num'+i);
-            letraN.appendChild(div);
-        }
-
-        if (i > 45 && i < 61) {
-            div.textContent = i;
-            div.setAttribute('id','num'+i);
-            letraG.appendChild(div);
-        }
-
-        if (i > 60 && i < 76) {
-            div.textContent = i;
-            div.setAttribute('id','num'+i);
-            letraO.appendChild(div);
-        }
+        div.textContent = i;
+        div.id = 'num' + i;
+        document.getElementById(columnaDe(i).id).appendChild(div);
     }
 }
 
-/*lista = bolos.sort(function () {
-    return Math.random() - 0.5;
-});*/
-
-
-var i,j,k;
-
-for (i = bolos.length; i; i--) {
-    j = Math.floor(Math.random() * i);
-    k = bolos[i - 1];
-    bolos[i - 1] = bolos[j];
-    bolos[j] = k;
-}
-
-console.log(bolos);
-
-
 function generarNumero() {
+    if (contador >= TOTAL_BOLAS - 1) {
+        finDelJuego();
+        return;
+    }
 
-        contador++;
+    contador++;
+    const numero = bolos[contador];
+    const { letra, color } = columnaDe(numero);
 
-        if (bolos[contador] < 16) {
-            let numero = bolos[contador];
-            numeroLetra.textContent = "B";
-            numeroBola.textContent = bolos[contador];
-            numeroWrap.style.backgroundColor = '#f5365c';
-            let pintar = document.getElementById('num'+numero);
-            pintar.style.backgroundColor ='#f5365c';
-            pintar.style.color ='#fff';
-            numeroWrap.style.animation = 'animacion 3s infinite';
-        }
+    numeroLetra.textContent = letra;
+    numeroBola.textContent = numero;
+    numeroWrap.style.backgroundColor = color;
+    numeroWrap.style.animation = 'animacion 3s infinite';
 
-        if (bolos[contador] > 15 && bolos[contador] < 31) {
-            let numero = bolos[contador];
-            numeroLetra.textContent = "I";
-            numeroBola.textContent = bolos[contador];
-            numeroWrap.style.backgroundColor = '#ffd600';
-            let pintar = document.getElementById('num'+numero);
-            pintar.style.backgroundColor ='#ffd600';
-            pintar.style.color ='#fff';
-            numeroWrap.style.animation = 'animacion 3s infinite';
-        }
+    const pintar = document.getElementById('num' + numero);
+    pintar.style.backgroundColor = color;
+    pintar.style.color = '#fff';
 
-        if (bolos[contador] > 30 && bolos[contador] < 46) {
-            let numero = bolos[contador];
-            numeroLetra.textContent = "N";
-            numeroBola.textContent = bolos[contador];
-            numeroWrap.style.backgroundColor = '#2dce89';
-            let pintar = document.getElementById('num'+numero);
-            pintar.style.backgroundColor ='#2dce89';
-            pintar.style.color ='#fff';
-            numeroWrap.style.animation = 'animacion 3s infinite';
-        }
-
-        if (bolos[contador] > 45 && bolos[contador] < 61) {
-            let numero = bolos[contador];
-            numeroLetra.textContent = "G";
-            numeroBola.textContent = bolos[contador];
-            numeroWrap.style.backgroundColor = '#5e72e4';
-            let pintar = document.getElementById('num'+numero);
-            pintar.style.backgroundColor ='#5e72e4';
-            pintar.style.color ='#fff';
-            numeroWrap.style.animation = 'animacion 3s infinite';
-        }
-
-        if (bolos[contador] > 60 && bolos[contador] < 76) {
-            let numero = bolos[contador];
-            numeroLetra.textContent = "O";
-            numeroBola.textContent = bolos[contador];
-            numeroWrap.style.backgroundColor = '#8965e0';
-            let pintar = document.getElementById('num'+numero);
-            pintar.style.backgroundColor ='#8965e0';
-            pintar.style.color ='#fff';
-            numeroWrap.style.animation = 'animacion 3s infinite';
-        }
-
-        if (bolos[contador] == 76) {
-            numeroLetra.textContent = "";
-            numeroBola.textContent = "";
-            numeroWrap.style.backgroundColor = '#ffffff';
-        }
-
+    // Si era la última bola, se termina el juego
+    if (contador === TOTAL_BOLAS - 1) {
+        finDelJuego();
+    }
 }
 
 function cronometro() {
-
-    let mAux, sAux;
-    s++;
-
-    if (s>59) {
-        m++;
-        s=0;
-    }
-
-    if (s<10){sAux="0"+s;}else{sAux=s;}
-    if (m<10){mAux="0"+m;}else{mAux=m;}
-
-    tiempo.textContent = mAux + ":" + sAux;
+    segundos++;
+    const m = String(Math.floor(segundos / 60)).padStart(2, '0');
+    const s = String(segundos % 60).padStart(2, '0');
+    tiempo.textContent = m + ':' + s;
 }
 
-playBtn.addEventListener('click', play);
-stopBtn.addEventListener('click',reset);
+function iniciar() {
+    if (jugando || terminado) return;
+    jugando = true;
+    iconPlay.className = 'icon-pause';
+    playBtn.setAttribute('aria-label', 'Pausar');
+    generarNumero(); // la primera bola sale al instante
+    if (terminado) return;
+    generar = setInterval(generarNumero, INTERVALO_BOLA);
+    hora = setInterval(cronometro, 1000);
+}
 
+function pausar() {
+    clearInterval(generar);
+    clearInterval(hora);
+    generar = null;
+    hora = null;
+    jugando = false;
+    iconPlay.className = 'icon-play_arrow';
+    playBtn.setAttribute('aria-label', 'Iniciar');
+}
 
 function play() {
-
-    if (iconPlay.getAttribute('class') == 'icon-pause') {
-        iconPlay.className = 'icon-play_arrow';
-        clearInterval(generar);
-        clearInterval(hora);
-
-    } else  {
-        generar = setInterval('generarNumero()',8000);
-        hora = setInterval('cronometro()',1000);
-        iconPlay.className = 'icon-pause';
-
+    if (jugando) {
+        pausar();
+    } else {
+        iniciar();
     }
+}
 
+function finDelJuego() {
+    pausar();
+    terminado = true;
+    playBtn.disabled = true;
+    numeroWrap.style.animation = 'none';
+}
+
+function bingo() {
+    if (contador < 0) {
+        alert('El juego aún no ha comenzado.');
+        return;
+    }
+    pausar();
+    const cantadas = contador + 1;
+    alert('¡BINGO!\nJuego en pausa para verificar el cartón.\n' +
+        'Bolas cantadas: ' + cantadas + ' de ' + TOTAL_BOLAS + '.');
 }
 
 function reset() {
-
-    if (confirm('Desea reiniciar el juego')) {
+    if (confirm('¿Desea reiniciar el juego?')) {
         location.reload();
     }
-
 }
+
+playBtn.addEventListener('click', play);
+stopBtn.addEventListener('click', reset);
+bingoBtn.addEventListener('click', bingo);
 
 numeroPanel();
