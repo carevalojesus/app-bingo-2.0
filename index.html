@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Bingo 3D</title>
+    <meta name="theme-color" content="#070712">
+    <link rel="stylesheet" href="dist/styles.css">
+</head>
+<body class="min-h-screen overflow-x-hidden font-ui text-white antialiased">
+
+<!-- Fondo 3D (Three.js) -->
+<canvas id="fondo" class="pointer-events-none fixed inset-0 -z-10 h-full w-full" aria-hidden="true"></canvas>
+
+<div class="mx-auto flex min-h-screen max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:py-10">
+
+    <!-- Encabezado -->
+    <header class="flex items-center justify-between gap-4" data-entrada>
+        <div class="flex items-center gap-3">
+            <h1 class="flex gap-1 font-display text-3xl sm:text-4xl" aria-label="Bingo">
+                <span class="logo-letra grid h-11 w-11 place-items-center rounded-xl bg-bb shadow-lg shadow-bb/40 sm:h-12 sm:w-12">B</span>
+                <span class="logo-letra grid h-11 w-11 place-items-center rounded-xl bg-bi text-slate-900 shadow-lg shadow-bi/40 sm:h-12 sm:w-12">I</span>
+                <span class="logo-letra grid h-11 w-11 place-items-center rounded-xl bg-bn shadow-lg shadow-bn/40 sm:h-12 sm:w-12">N</span>
+                <span class="logo-letra grid h-11 w-11 place-items-center rounded-xl bg-bg shadow-lg shadow-bg/40 sm:h-12 sm:w-12">G</span>
+                <span class="logo-letra grid h-11 w-11 place-items-center rounded-xl bg-bo shadow-lg shadow-bo/40 sm:h-12 sm:w-12">O</span>
+            </h1>
+            <span class="hidden rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-bold tracking-widest text-white/60 sm:inline">3.0</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <p class="hidden text-xs text-white/40 md:block">
+                <kbd class="rounded border border-white/15 px-1.5 py-0.5">Espacio</kbd> jugar ·
+                <kbd class="rounded border border-white/15 px-1.5 py-0.5">B</kbd> bingo ·
+                <kbd class="rounded border border-white/15 px-1.5 py-0.5">R</kbd> reiniciar
+            </p>
+            <button id="sonidoBtn" class="btn-ghost h-11 w-11 !p-0" aria-pressed="true" aria-label="Sonido y voz activados" title="Sonido y voz">
+                <svg id="iconoSonidoOn" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></svg>
+                <svg id="iconoSonidoOff" class="hidden h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="m23 9-6 6"/><path d="m17 9 6 6"/></svg>
+            </button>
+        </div>
+    </header>
+
+    <main class="grid flex-1 gap-6 lg:grid-cols-[380px_minmax(0,1fr)]">
+
+        <!-- Columna izquierda: bola y controles -->
+        <section class="flex flex-col gap-6" aria-label="Bola actual y controles">
+            <div class="panel relative overflow-hidden p-5" data-entrada>
+                <div class="flex items-center justify-between">
+                    <span class="etiqueta">Bola actual</span>
+                    <span id="estado" class="rounded-full bg-white/5 px-3 py-1 text-xs font-bold text-white/60">Listo</span>
+                </div>
+
+                <div class="relative mx-auto aspect-square w-full max-w-[320px]">
+                    <div id="aura" class="absolute inset-[18%] rounded-full opacity-0 blur-3xl"></div>
+                    <canvas id="bola" class="relative h-full w-full" aria-hidden="true"></canvas>
+                    <div id="finJuego" class="pointer-events-none absolute inset-0 hidden place-items-center">
+                        <span class="rounded-2xl bg-black/60 px-5 py-3 font-display text-2xl backdrop-blur">Fin del juego</span>
+                    </div>
+                </div>
+
+                <p class="text-center font-display text-4xl tracking-wide" aria-live="polite">
+                    <span id="cantoLetra" class="text-white/30">—</span>
+                    <span id="cantoNumero" class="text-white/30"></span>
+                </p>
+                <div class="mx-auto mt-3 flex max-w-[200px] items-center gap-2">
+                    <span class="etiqueta !text-[10px] !tracking-widest">Siguiente</span>
+                    <div class="h-1 flex-1 overflow-hidden rounded-full bg-white/10">
+                        <div id="siguiente" class="h-full w-0 rounded-full bg-white/70"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel flex flex-col gap-5 p-5" data-entrada>
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="rounded-2xl bg-white/[0.04] p-4">
+                        <p class="etiqueta">Bolas</p>
+                        <p class="mt-1 font-display text-3xl"><span id="contadorBolas">0</span><span class="text-lg text-white/30">/75</span></p>
+                    </div>
+                    <div class="rounded-2xl bg-white/[0.04] p-4">
+                        <p class="etiqueta">Tiempo</p>
+                        <p id="tiempo" class="mt-1 font-display text-3xl tabular-nums">00:00</p>
+                    </div>
+                </div>
+
+                <div class="h-2 overflow-hidden rounded-full bg-white/5" role="progressbar" aria-label="Progreso" aria-valuemin="0" aria-valuemax="75" aria-valuenow="0" id="barraProgreso">
+                    <div id="progreso" class="h-full w-0 rounded-full bg-gradient-to-r from-bb via-bn to-bo"></div>
+                </div>
+
+                <div class="grid grid-cols-[1fr_auto] gap-3">
+                    <button id="playBtn" class="btn bg-gradient-to-r from-bg to-bo py-4 text-lg text-white shadow-lg shadow-bg/30 hover:brightness-110" aria-label="Iniciar">
+                        <svg id="iconoPlay" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72a1 1 0 0 0 1.52.85l11-6.86a1 1 0 0 0 0-1.7l-11-6.86A1 1 0 0 0 8 5.14z"/></svg>
+                        <svg id="iconoPausa" class="hidden h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+                        <span id="playTexto">Iniciar</span>
+                    </button>
+                    <button id="resetBtn" class="btn-ghost w-14 !px-0" aria-label="Reiniciar partida" title="Reiniciar (R)">
+                        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+                    </button>
+                </div>
+
+                <button id="bingoBtn" class="btn relative overflow-hidden bg-gradient-to-r from-bb to-[#fc6767] py-4 font-display text-2xl tracking-wider text-white shadow-lg shadow-bb/30 hover:brightness-110">
+                    ¡BINGO!
+                </button>
+
+                <div>
+                    <p class="etiqueta mb-2">Velocidad</p>
+                    <div class="grid grid-cols-4 gap-1 rounded-2xl bg-white/[0.04] p-1" role="group" aria-label="Segundos entre bolas">
+                        <button class="velocidad rounded-xl py-2 text-sm font-bold text-white/60 transition hover:text-white" data-ms="4000" aria-pressed="false">4s</button>
+                        <button class="velocidad rounded-xl py-2 text-sm font-bold text-white/60 transition hover:text-white" data-ms="6000" aria-pressed="false">6s</button>
+                        <button class="velocidad rounded-xl py-2 text-sm font-bold text-white/60 transition hover:text-white" data-ms="8000" aria-pressed="true">8s</button>
+                        <button class="velocidad rounded-xl py-2 text-sm font-bold text-white/60 transition hover:text-white" data-ms="12000" aria-pressed="false">12s</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Columna derecha: historial y tablero -->
+        <section class="flex min-w-0 flex-col gap-6" aria-label="Tablero">
+            <div class="panel p-5" data-entrada>
+                <div class="mb-3 flex items-center justify-between">
+                    <span class="etiqueta">Últimas bolas</span>
+                </div>
+                <ol id="historial" class="flex min-h-[56px] items-center gap-3 overflow-hidden" aria-label="Últimas bolas cantadas">
+                    <li class="text-sm text-white/30" id="historialVacio">Aún no sale ninguna bola. Pulsa <strong class="text-white/60">Iniciar</strong>.</li>
+                </ol>
+            </div>
+
+            <div class="panel flex flex-1 flex-col p-4 sm:p-5" data-entrada>
+                <div class="mb-4 flex items-center justify-between">
+                    <span class="etiqueta">Tablero</span>
+                    <span class="text-xs text-white/30">75 bolas</span>
+                </div>
+                <div class="flex flex-1 flex-col justify-center gap-6 lg:gap-10">
+                <!-- Móvil: 5 columnas verticales. Escritorio: 5 filas horizontales. -->
+                <div id="tablero"
+                     class="grid grid-flow-col grid-cols-5 grid-rows-[repeat(16,minmax(0,auto))] gap-1.5
+                            lg:grid-flow-row lg:grid-cols-[repeat(16,minmax(0,1fr))] lg:grid-rows-5 lg:gap-2">
+                </div>
+                <div>
+                    <p class="etiqueta mb-3">Por letra</p>
+                    <div id="porLetra" class="grid grid-cols-5 gap-2 sm:gap-3"></div>
+                </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="text-center text-xs text-white/25">Bingo 3D · Three.js · GSAP · Tailwind</footer>
+</div>
+
+<!-- Modal: ¡Bingo! -->
+<div id="modalBingo" class="fixed inset-0 z-40 hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="tituloBingo">
+    <div class="modal-fondo absolute inset-0 bg-black/70 backdrop-blur-sm" data-cerrar></div>
+    <div class="modal-caja panel relative w-full max-w-lg border-white/15 bg-slate-900/80 p-6 sm:p-8">
+        <h2 id="tituloBingo" class="text-center font-display text-6xl sm:text-7xl" aria-label="¡Bingo!">
+            <span class="titulo-letra inline-block text-bb">¡</span><span class="titulo-letra inline-block text-bb">B</span><span class="titulo-letra inline-block text-bi">I</span><span class="titulo-letra inline-block text-bn">N</span><span class="titulo-letra inline-block text-bg">G</span><span class="titulo-letra inline-block text-bo">O</span><span class="titulo-letra inline-block text-bo">!</span>
+        </h2>
+        <p class="mt-2 text-center text-white/60">
+            Juego en pausa · <strong id="bingoBolas" class="text-white">0</strong> bolas en <strong id="bingoTiempo" class="text-white">00:00</strong>
+        </p>
+
+        <label for="numerosCarton" class="etiqueta mt-6 block">Verificar cartón</label>
+        <textarea id="numerosCarton" rows="2" placeholder="Escribe los números de la línea ganadora, ej: 5 18 33 52 71"
+                  class="mt-2 w-full resize-none rounded-2xl border border-white/10 bg-white/5 p-3 text-white placeholder:text-white/30 focus:border-white/30 focus:outline-none"></textarea>
+        <button id="verificarBtn" class="btn-ghost mt-2 w-full">Verificar números</button>
+
+        <div id="resultado" class="mt-4 hidden">
+            <p id="resultadoTexto" class="mb-3 text-center font-bold"></p>
+            <div id="resultadoChips" class="flex flex-wrap justify-center gap-2"></div>
+        </div>
+
+        <div class="mt-6 grid grid-cols-2 gap-3">
+            <button id="seguirBtn" class="btn-ghost">Seguir jugando</button>
+            <button id="nuevaPartidaBtn" class="btn bg-white text-slate-900 hover:bg-white/90">Nueva partida</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: confirmar reinicio -->
+<div id="modalReset" class="fixed inset-0 z-40 hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="tituloReset">
+    <div class="modal-fondo absolute inset-0 bg-black/70 backdrop-blur-sm" data-cerrar></div>
+    <div class="modal-caja panel relative w-full max-w-sm border-white/15 bg-slate-900/80 p-6 text-center">
+        <h2 id="tituloReset" class="font-display text-3xl">¿Reiniciar la partida?</h2>
+        <p class="mt-2 text-white/60">Se borrarán las bolas cantadas y el tiempo.</p>
+        <div class="mt-6 grid grid-cols-2 gap-3">
+            <button class="btn-ghost" data-cerrar>Cancelar</button>
+            <button id="confirmarResetBtn" class="btn bg-bb text-white hover:brightness-110">Reiniciar</button>
+        </div>
+    </div>
+</div>
+
+<!-- Aviso flotante -->
+<div id="aviso" class="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-2xl border border-white/10 bg-slate-900/90 px-5 py-3 text-sm font-bold opacity-0 shadow-2xl backdrop-blur"></div>
+
+<script src="dist/app.js"></script>
+</body>
+</html>
