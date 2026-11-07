@@ -1,7 +1,7 @@
-// Sonido, voz y confeti.
-import { gsap } from 'gsap';
+// Sonidos sintetizados con Web Audio (sin archivos) y voz que canta las bolas.
 
 let audio = null;
+let bufferRuido = null;
 
 function contexto() {
     if (!audio) {
@@ -13,40 +13,131 @@ function contexto() {
     return audio;
 }
 
-// "Pop" corto al salir una bola
-export function sonidoBola() {
-    const ctx = contexto();
-    if (!ctx) return;
-    const ahora = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const ganancia = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(880, ahora);
-    osc.frequency.exponentialRampToValueAtTime(220, ahora + 0.18);
-    ganancia.gain.setValueAtTime(0.0001, ahora);
-    ganancia.gain.exponentialRampToValueAtTime(0.25, ahora + 0.01);
-    ganancia.gain.exponentialRampToValueAtTime(0.0001, ahora + 0.25);
-    osc.connect(ganancia).connect(ctx.destination);
-    osc.start(ahora);
-    osc.stop(ahora + 0.3);
+function ruido(ctx) {
+    if (!bufferRuido) {
+        bufferRuido = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+        const datos = bufferRuido.getChannelData(0);
+        for (let i = 0; i < datos.length; i++) datos[i] = Math.random() * 2 - 1;
+    }
+    const fuente = ctx.createBufferSource();
+    fuente.buffer = bufferRuido;
+    fuente.loop = true;
+    return fuente;
 }
 
-// Pequeña fanfarria para el ¡Bingo!
-export function sonidoBingo() {
+function envolvente(ctx, inicio, pico, ataque, caida) {
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, inicio);
+    g.gain.exponentialRampToValueAtTime(pico, inicio + ataque);
+    g.gain.exponentialRampToValueAtTime(0.0001, inicio + ataque + caida);
+    return g;
+}
+
+// Redoble de tambor mientras gira el bombo
+export function redoble(duracion = 1) {
     const ctx = contexto();
     if (!ctx) return;
-    [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => {
-        const t = ctx.currentTime + i * 0.11;
+    const t = ctx.currentTime;
+    const fuente = ruido(ctx);
+    const filtro = ctx.createBiquadFilter();
+    filtro.type = 'bandpass';
+    filtro.frequency.value = 220;
+    filtro.Q.value = 0.7;
+    const tremolo = ctx.createGain();
+    tremolo.gain.value = 0.5;
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 24;
+    const profundidad = ctx.createGain();
+    profundidad.gain.value = 0.5;
+    lfo.connect(profundidad).connect(tremolo.gain);
+    const salida = ctx.createGain();
+    salida.gain.setValueAtTime(0.0001, t);
+    salida.gain.exponentialRampToValueAtTime(0.35, t + duracion * 0.85);
+    salida.gain.exponentialRampToValueAtTime(0.0001, t + duracion + 0.05);
+    fuente.connect(filtro).connect(tremolo).connect(salida).connect(ctx.destination);
+    fuente.start(t);
+    lfo.start(t);
+    fuente.stop(t + duracion + 0.1);
+    lfo.stop(t + duracion + 0.1);
+}
+
+// Silbido de la bola volando
+export function silbido(duracion = 0.6) {
+    const ctx = contexto();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const fuente = ruido(ctx);
+    const filtro = ctx.createBiquadFilter();
+    filtro.type = 'bandpass';
+    filtro.Q.value = 4;
+    filtro.frequency.setValueAtTime(500, t);
+    filtro.frequency.exponentialRampToValueAtTime(3200, t + duracion);
+    const g = envolvente(ctx, t, 0.3, duracion * 0.7, duracion * 0.3);
+    fuente.connect(filtro).connect(g).connect(ctx.destination);
+    fuente.start(t);
+    fuente.stop(t + duracion + 0.05);
+}
+
+// Campana brillante al revelar el número
+export function campana() {
+    const ctx = contexto();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    [1318.5, 1975.5, 2637].forEach((f, i) => {
         const osc = ctx.createOscillator();
-        const g = ctx.createGain();
-        osc.type = 'triangle';
+        osc.type = 'sine';
         osc.frequency.value = f;
-        g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(0.22, t + 0.02);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + (i === 3 ? 0.7 : 0.2));
+        const g = envolvente(ctx, t, 0.16 / (i + 1), 0.005, 1.1);
         osc.connect(g).connect(ctx.destination);
         osc.start(t);
-        osc.stop(t + 0.8);
+        osc.stop(t + 1.2);
+    });
+}
+
+// Golpe grave cuando el número choca contra la pantalla
+export function golpe(fuerza = 1) {
+    const ctx = contexto();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(150, t);
+    osc.frequency.exponentialRampToValueAtTime(40, t + 0.3);
+    const g = envolvente(ctx, t, 0.7 * fuerza, 0.005, 0.35);
+    osc.connect(g).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.4);
+
+    const chasquido = ruido(ctx);
+    const filtro = ctx.createBiquadFilter();
+    filtro.type = 'highpass';
+    filtro.frequency.value = 1800;
+    const gc = envolvente(ctx, t, 0.25 * fuerza, 0.002, 0.06);
+    chasquido.connect(filtro).connect(gc).connect(ctx.destination);
+    chasquido.start(t);
+    chasquido.stop(t + 0.1);
+}
+
+// Fanfarria del ¡Bingo!
+export function fanfarria() {
+    const ctx = contexto();
+    if (!ctx) return;
+    const notas = [[523.25, 0], [659.25, 0.12], [783.99, 0.24], [1046.5, 0.36], [783.99, 0.56], [1046.5, 0.68]];
+    notas.forEach(([f, d], i) => {
+        const t = ctx.currentTime + d;
+        for (const detune of [-8, 8]) {
+            const osc = ctx.createOscillator();
+            osc.type = 'sawtooth';
+            osc.frequency.value = f;
+            osc.detune.value = detune;
+            const filtro = ctx.createBiquadFilter();
+            filtro.type = 'lowpass';
+            filtro.frequency.value = 2400;
+            const g = envolvente(ctx, t, 0.07, 0.02, i === notas.length - 1 ? 1.1 : 0.18);
+            osc.connect(filtro).connect(g).connect(ctx.destination);
+            osc.start(t);
+            osc.stop(t + 1.3);
+        }
     });
 }
 
@@ -56,39 +147,10 @@ export function cantar(texto) {
     const voz = new SpeechSynthesisUtterance(texto);
     voz.lang = 'es-ES';
     voz.rate = 0.95;
+    voz.pitch = 1.05;
     window.speechSynthesis.speak(voz);
 }
 
 export function callar() {
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-}
-
-export function confeti(colores, cantidad = 140) {
-    const capa = document.createElement('div');
-    capa.className = 'pointer-events-none fixed inset-0 z-50 overflow-hidden';
-    capa.setAttribute('aria-hidden', 'true');
-    document.body.appendChild(capa);
-
-    const origenX = window.innerWidth / 2;
-    const origenY = window.innerHeight * 0.45;
-
-    for (let i = 0; i < cantidad; i++) {
-        const pieza = document.createElement('span');
-        const ancho = gsap.utils.random(6, 12);
-        pieza.style.cssText =
-            `position:absolute;left:${origenX}px;top:${origenY}px;width:${ancho}px;height:${ancho * gsap.utils.random(0.4, 1.6)}px;` +
-            `background:${colores[i % colores.length]};border-radius:${Math.random() > 0.5 ? '50%' : '2px'}`;
-        capa.appendChild(pieza);
-
-        const angulo = gsap.utils.random(0, Math.PI * 2);
-        const fuerza = gsap.utils.random(160, Math.min(window.innerWidth, 900) * 0.6);
-        const dx = Math.cos(angulo) * fuerza;
-        const dy = Math.sin(angulo) * fuerza - 160;
-
-        gsap.timeline()
-            .to(pieza, { x: dx, y: dy, rotation: gsap.utils.random(-540, 540), duration: 0.7, ease: 'power3.out' })
-            .to(pieza, { y: dy + window.innerHeight, x: dx + gsap.utils.random(-80, 80), rotation: '+=360', duration: gsap.utils.random(1.6, 2.6), ease: 'power1.in' })
-            .to(pieza, { opacity: 0, duration: 0.6 }, '-=0.6');
-    }
-    gsap.delayedCall(3.6, () => capa.remove());
 }

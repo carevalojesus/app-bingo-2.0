@@ -1,18 +1,22 @@
-# Bingo 3D
+# Bingo Show
 
-Una app para cantar el bingo de 75 bolas, con bola 3D, animaciones y tablero en vivo.
+Un sorteo de bingo de 75 bolas con estilo de concurso de TV: bombo dorado en 3D
+con las bolas girando con física, bombillas, focos, chispas y anuncios gigantes.
 
-Hecha con **Three.js** (3D), **GSAP** (animaciones) y **Tailwind CSS** (estilos).
+Hecho con **Three.js** (escena 3D), **GSAP** (animaciones) y **Tailwind CSS** (interfaz).
 
-## Cómo usarla
+## Cómo usarlo
 
 Abre `index.html` en el navegador (con doble clic funciona; no necesita internet ni servidor).
 
-- **Iniciar / Pausar**: botón principal o tecla `Espacio`.
-- **¡Bingo!**: botón rojo o tecla `B`. Pausa el juego y permite verificar los números del cartón.
-- **Reiniciar**: botón circular o tecla `R`.
-- **Velocidad**: una bola cada 4, 6, 8 o 12 segundos.
-- **Sonido**: botón del altavoz (efectos y voz que canta cada bola).
+| Acción | Botón | Tecla |
+|---|---|---|
+| Iniciar / pausar | Botón amarillo redondo (el anillo muestra cuánto falta para la siguiente bola) | `Espacio` |
+| ¡Bingo! | Botón rojo: pausa el juego y permite verificar el cartón | `B` |
+| Reiniciar | Botón con flecha circular: las bolas vuelven al bombo | `R` |
+| Velocidad | Botón `8s`: cambia entre 4, 6, 8 y 12 segundos por bola | |
+| Sonido | Altavoz: efectos y voz que canta cada bola | |
+| Pizarra (móvil) | Botón verde con cuadritos | `Esc` para cerrar |
 
 ## Desarrollo
 
@@ -27,10 +31,14 @@ npm run dev     # recompila automáticamente al guardar
 | Archivo | Contenido |
 |---|---|
 | `index.html` | Estructura de la interfaz |
-| `src/main.js` | Lógica del juego, tablero, historial, modales y atajos |
-| `src/bola3d.js` | Bola 3D (Three.js) y su animación de caída |
-| `src/fondo3d.js` | Fondo 3D con bolas flotando |
-| `src/efectos.js` | Sonidos, voz y confeti |
-| `src/styles.css` | Fuentes y componentes de Tailwind |
+| `src/main.js` | Lógica del juego, pizarra, historial, modales y atajos |
+| `src/escenario.js` | Escena 3D: bombo, física de las bolas, luces, focos, chispas y cámara |
+| `src/texturas.js` | Texturas de las bolas (el número pintado sobre la esfera) |
+| `src/anuncio.js` | Anuncio gigante de cada bola, celebración de ¡Bingo!, sellos y confeti |
+| `src/efectos.js` | Sonidos sintetizados (redoble, silbido, golpe, campana, fanfarria) y voz |
+| `src/styles.css` | Tipografías y componentes de Tailwind |
+
+Tipografías: [Bungee](https://fonts.google.com/specimen/Bungee) y
+[Archivo](https://fonts.google.com/specimen/Archivo) (licencia OFL, incluidas en `fonts/`).
 
 La versión anterior (2.0) sigue disponible en `appBingo.html`.

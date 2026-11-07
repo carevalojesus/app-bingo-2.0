@@ -2,193 +2,193 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Bingo 3D</title>
-    <meta name="theme-color" content="#070712">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Bingo Show</title>
+    <meta name="theme-color" content="#1a0d36">
     <link rel="stylesheet" href="dist/styles.css">
 </head>
-<body class="min-h-screen overflow-x-hidden font-ui text-white antialiased">
+<body class="h-[100dvh] overflow-hidden bg-escenario font-ui text-tinta antialiased">
 
-<!-- Fondo 3D (Three.js) -->
-<canvas id="fondo" class="pointer-events-none fixed inset-0 -z-10 h-full w-full" aria-hidden="true"></canvas>
+<!-- Escenario 3D (Three.js) -->
+<canvas id="escena" class="fixed inset-0 h-full w-full" aria-hidden="true"></canvas>
 
-<div class="mx-auto flex min-h-screen max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:py-10">
+<!-- Todo lo que tiembla con los golpes -->
+<div id="mundo" class="pointer-events-none fixed inset-0">
 
-    <!-- Encabezado -->
-    <header class="flex items-center justify-between gap-4" data-entrada>
-        <div class="flex items-center gap-3">
-            <h1 class="flex gap-1 font-display text-3xl sm:text-4xl" aria-label="Bingo">
-                <span class="logo-letra grid h-11 w-11 place-items-center rounded-xl bg-bb shadow-lg shadow-bb/40 sm:h-12 sm:w-12">B</span>
-                <span class="logo-letra grid h-11 w-11 place-items-center rounded-xl bg-bi text-slate-900 shadow-lg shadow-bi/40 sm:h-12 sm:w-12">I</span>
-                <span class="logo-letra grid h-11 w-11 place-items-center rounded-xl bg-bn shadow-lg shadow-bn/40 sm:h-12 sm:w-12">N</span>
-                <span class="logo-letra grid h-11 w-11 place-items-center rounded-xl bg-bg shadow-lg shadow-bg/40 sm:h-12 sm:w-12">G</span>
-                <span class="logo-letra grid h-11 w-11 place-items-center rounded-xl bg-bo shadow-lg shadow-bo/40 sm:h-12 sm:w-12">O</span>
-            </h1>
-            <span class="hidden rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-bold tracking-widest text-white/60 sm:inline">3.0</span>
+    <!-- Interfaz sobre el escenario -->
+    <div id="ui" class="absolute inset-0 flex flex-col justify-between p-3 sm:p-6 lg:right-[424px]">
+
+        <header class="flex items-start justify-between gap-2">
+            <div class="pointer-events-auto">
+                <h1 class="flex gap-1 sm:gap-1.5" aria-label="Bingo Show">
+                    <span class="logo-ficha bg-tomate" data-rot="-6">B</span>
+                    <span class="logo-ficha bg-girasol" data-rot="4">I</span>
+                    <span class="logo-ficha bg-menta" data-rot="-3">N</span>
+                    <span class="logo-ficha bg-cobalto text-crema" data-rot="6">G</span>
+                    <span class="logo-ficha bg-fucsia" data-rot="-5">O</span>
+                </h1>
+                <div class="mt-2 flex items-center gap-2 sm:mt-3">
+                    <span id="enVivo" class="inline-flex items-center gap-1.5 rounded-full border-[2.5px] border-tinta bg-tomate px-2.5 py-0.5 font-ui text-[10px] font-black uppercase tracking-widest text-crema shadow-duro-sm sm:text-[11px]">
+                        <span class="h-2 w-2 animate-pulse rounded-full bg-crema"></span>En vivo
+                    </span>
+                    <span id="lema" class="hidden font-display text-sm text-crema/70 sm:inline">El show del sorteo</span>
+                </div>
+            </div>
+
+            <div id="stats" class="pointer-events-auto flex flex-col items-end gap-2 sm:flex-row sm:items-start">
+                <div class="carta flex divide-x-[3px] divide-tinta overflow-hidden">
+                    <div class="px-2 py-1 sm:px-4 sm:py-2">
+                        <p class="etiqueta text-tinta/60">Bolas</p>
+                        <p class="font-display text-base leading-tight sm:text-2xl"><span id="contadorBolas">0</span><span class="text-xs text-tinta/40 sm:text-sm">/75</span></p>
+                    </div>
+                    <div class="px-2 py-1 sm:px-4 sm:py-2">
+                        <p class="etiqueta text-tinta/60">Tiempo</p>
+                        <p id="tiempo" class="font-ui text-base font-black leading-tight tabular-nums sm:text-2xl">00:00</p>
+                    </div>
+                </div>
+                <button id="sonidoBtn" class="boton h-10 w-10 shrink-0 bg-crema sm:h-14 sm:w-14" aria-pressed="true" aria-label="Sonido y voz activados" title="Sonido y voz">
+                    <svg id="iconoSonidoOn" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></svg>
+                    <svg id="iconoSonidoOff" class="hidden h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z" fill="currentColor"/><path d="m23 9-6 6"/><path d="m17 9 6 6"/></svg>
+                </button>
+            </div>
+        </header>
+
+        <div class="flex flex-col items-stretch gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <!-- Bola actual + historial -->
+            <section id="actual" class="pointer-events-auto flex items-center gap-3" aria-label="Bola actual">
+                <div class="carta flex items-center gap-3 p-2 pr-4">
+                    <div id="fichaActual" class="ficha h-14 w-14 text-sm sm:h-16 sm:w-16" style="--c:#3b2a6e">
+                        <span class="ficha-centro">?</span>
+                    </div>
+                    <div>
+                        <p class="etiqueta text-tinta/60">Bola actual</p>
+                        <p id="textoActual" class="font-display text-2xl leading-none sm:text-3xl" aria-live="polite">—</p>
+                    </div>
+                </div>
+                <ol id="historial" class="flex items-center gap-1.5 overflow-hidden" aria-label="Bolas anteriores"></ol>
+            </section>
+
+            <!-- Controles -->
+            <nav id="controles" class="pointer-events-auto flex items-center justify-center gap-2 sm:gap-3" aria-label="Controles">
+                <button id="resetBtn" class="boton h-11 w-11 bg-crema sm:h-12 sm:w-12" aria-label="Reiniciar partida" title="Reiniciar (R)">
+                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+                </button>
+                <div class="relative mx-1">
+                    <svg class="pointer-events-none absolute -inset-[8px] h-[calc(100%+16px)] w-[calc(100%+16px)] -rotate-90" viewBox="0 0 100 100" aria-hidden="true">
+                        <circle cx="50" cy="50" r="46" fill="none" stroke="#fff3df" stroke-opacity="0.2" stroke-width="6"/>
+                        <circle id="anillo" cx="50" cy="50" r="46" fill="none" stroke="#ffc43d" stroke-width="6" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
+                    </svg>
+                    <button id="playBtn" class="boton h-14 w-14 rounded-full bg-girasol sm:h-16 sm:w-16" aria-label="Iniciar" title="Iniciar / pausar (Espacio)">
+                        <svg id="iconoPlay" class="ml-1 h-7 w-7" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></svg>
+                        <svg id="iconoPausa" class="hidden h-7 w-7" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="4" width="5" height="16" rx="1.5"/><rect x="14" y="4" width="5" height="16" rx="1.5"/></svg>
+                    </button>
+                </div>
+                <button id="bingoBtn" class="boton h-12 bg-tomate px-4 font-display text-lg normal-case text-crema sm:h-14 sm:px-6 sm:text-2xl" title="¡Bingo! (B)">¡Bingo!</button>
+                <button id="velocidadBtn" class="boton h-11 min-w-[3.25rem] bg-crema px-2 text-sm sm:h-12 sm:min-w-[3.75rem]" aria-label="Velocidad: una bola cada 8 segundos" title="Velocidad">8s</button>
+                <button id="pizarraBtn" class="boton h-11 w-11 bg-menta lg:hidden" aria-label="Ver pizarra" aria-expanded="false" aria-controls="pizarra">
+                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+                </button>
+            </nav>
         </div>
-        <div class="flex items-center gap-2">
-            <p class="hidden text-xs text-white/40 md:block">
-                <kbd class="rounded border border-white/15 px-1.5 py-0.5">Espacio</kbd> jugar ·
-                <kbd class="rounded border border-white/15 px-1.5 py-0.5">B</kbd> bingo ·
-                <kbd class="rounded border border-white/15 px-1.5 py-0.5">R</kbd> reiniciar
-            </p>
-            <button id="sonidoBtn" class="btn-ghost h-11 w-11 !p-0" aria-pressed="true" aria-label="Sonido y voz activados" title="Sonido y voz">
-                <svg id="iconoSonidoOn" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></svg>
-                <svg id="iconoSonidoOff" class="hidden h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="m23 9-6 6"/><path d="m17 9 6 6"/></svg>
+    </div>
+
+    <!-- Fondo oscuro de la pizarra en móvil -->
+    <div id="pizarraFondo" class="pointer-events-auto fixed inset-0 z-[15] hidden bg-escenario/60 lg:hidden"></div>
+
+    <!-- Pizarra -->
+    <aside id="pizarra" class="pizarra carta pointer-events-auto fixed inset-x-2 bottom-2 z-20 flex h-[80dvh] flex-col p-3 sm:inset-x-6 sm:p-4 lg:inset-x-auto lg:bottom-6 lg:right-6 lg:top-6 lg:h-auto lg:w-[392px]" aria-label="Pizarra de números">
+        <div class="mb-3 flex items-center justify-between gap-3">
+            <div>
+                <h2 class="font-display text-xl leading-none sm:text-2xl">Pizarra</h2>
+                <p class="etiqueta mt-1 text-tinta/50"><span id="pizarraCuenta">0</span> de 75 cantadas</p>
+            </div>
+            <div class="h-3.5 flex-1 overflow-hidden rounded-full border-[2.5px] border-tinta bg-papel">
+                <div id="progreso" class="h-full w-0 bg-tomate"></div>
+            </div>
+            <button id="cerrarPizarra" class="boton h-9 w-9 bg-crema lg:hidden" aria-label="Cerrar pizarra">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
             </button>
         </div>
-    </header>
+        <div id="tablero" class="grid min-h-0 flex-1 grid-flow-col grid-cols-5 grid-rows-[auto_repeat(15,minmax(0,1fr))] gap-1 sm:gap-1.5"></div>
+    </aside>
 
-    <main class="grid flex-1 gap-6 lg:grid-cols-[380px_minmax(0,1fr)]">
-
-        <!-- Columna izquierda: bola y controles -->
-        <section class="flex flex-col gap-6" aria-label="Bola actual y controles">
-            <div class="panel relative overflow-hidden p-5" data-entrada>
-                <div class="flex items-center justify-between">
-                    <span class="etiqueta">Bola actual</span>
-                    <span id="estado" class="rounded-full bg-white/5 px-3 py-1 text-xs font-bold text-white/60">Listo</span>
-                </div>
-
-                <div class="relative mx-auto aspect-square w-full max-w-[320px]">
-                    <div id="aura" class="absolute inset-[18%] rounded-full opacity-0 blur-3xl"></div>
-                    <canvas id="bola" class="relative h-full w-full" aria-hidden="true"></canvas>
-                    <div id="finJuego" class="pointer-events-none absolute inset-0 hidden place-items-center">
-                        <span class="rounded-2xl bg-black/60 px-5 py-3 font-display text-2xl backdrop-blur">Fin del juego</span>
-                    </div>
-                </div>
-
-                <p class="text-center font-display text-4xl tracking-wide" aria-live="polite">
-                    <span id="cantoLetra" class="text-white/30">—</span>
-                    <span id="cantoNumero" class="text-white/30"></span>
-                </p>
-                <div class="mx-auto mt-3 flex max-w-[200px] items-center gap-2">
-                    <span class="etiqueta !text-[10px] !tracking-widest">Siguiente</span>
-                    <div class="h-1 flex-1 overflow-hidden rounded-full bg-white/10">
-                        <div id="siguiente" class="h-full w-0 rounded-full bg-white/70"></div>
-                    </div>
-                </div>
+    <!-- Anuncio de cada bola -->
+    <div id="anuncio" class="absolute inset-0 z-30 hidden overflow-hidden lg:right-[424px]" aria-hidden="true">
+        <div class="absolute inset-0 grid place-items-center">
+            <div id="franjaTinta" class="absolute left-[-10%] h-[46vmin] w-[120%] bg-tinta"></div>
+            <div id="franja" class="absolute left-[-10%] h-[36vmin] w-[120%]"></div>
+            <div id="anuncioTexto" class="relative flex items-center gap-[4vmin]">
+                <span id="anuncioLetra" class="grid h-[24vmin] w-[24vmin] place-items-center rounded-[4vmin] border-[1vmin] border-tinta bg-crema font-display text-[16vmin] text-tinta shadow-[1.6vmin_1.6vmin_0_#14112b]"></span>
+                <span id="anuncioNumero" class="numero-gigante flex font-display text-[30vmin] leading-none"></span>
             </div>
+        </div>
+    </div>
 
-            <div class="panel flex flex-col gap-5 p-5" data-entrada>
-                <div class="grid grid-cols-2 gap-3">
-                    <div class="rounded-2xl bg-white/[0.04] p-4">
-                        <p class="etiqueta">Bolas</p>
-                        <p class="mt-1 font-display text-3xl"><span id="contadorBolas">0</span><span class="text-lg text-white/30">/75</span></p>
-                    </div>
-                    <div class="rounded-2xl bg-white/[0.04] p-4">
-                        <p class="etiqueta">Tiempo</p>
-                        <p id="tiempo" class="mt-1 font-display text-3xl tabular-nums">00:00</p>
-                    </div>
-                </div>
-
-                <div class="h-2 overflow-hidden rounded-full bg-white/5" role="progressbar" aria-label="Progreso" aria-valuemin="0" aria-valuemax="75" aria-valuenow="0" id="barraProgreso">
-                    <div id="progreso" class="h-full w-0 rounded-full bg-gradient-to-r from-bb via-bn to-bo"></div>
-                </div>
-
-                <div class="grid grid-cols-[1fr_auto] gap-3">
-                    <button id="playBtn" class="btn bg-gradient-to-r from-bg to-bo py-4 text-lg text-white shadow-lg shadow-bg/30 hover:brightness-110" aria-label="Iniciar">
-                        <svg id="iconoPlay" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.14v13.72a1 1 0 0 0 1.52.85l11-6.86a1 1 0 0 0 0-1.7l-11-6.86A1 1 0 0 0 8 5.14z"/></svg>
-                        <svg id="iconoPausa" class="hidden h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
-                        <span id="playTexto">Iniciar</span>
-                    </button>
-                    <button id="resetBtn" class="btn-ghost w-14 !px-0" aria-label="Reiniciar partida" title="Reiniciar (R)">
-                        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
-                    </button>
-                </div>
-
-                <button id="bingoBtn" class="btn relative overflow-hidden bg-gradient-to-r from-bb to-[#fc6767] py-4 font-display text-2xl tracking-wider text-white shadow-lg shadow-bb/30 hover:brightness-110">
-                    ¡BINGO!
-                </button>
-
-                <div>
-                    <p class="etiqueta mb-2">Velocidad</p>
-                    <div class="grid grid-cols-4 gap-1 rounded-2xl bg-white/[0.04] p-1" role="group" aria-label="Segundos entre bolas">
-                        <button class="velocidad rounded-xl py-2 text-sm font-bold text-white/60 transition hover:text-white" data-ms="4000" aria-pressed="false">4s</button>
-                        <button class="velocidad rounded-xl py-2 text-sm font-bold text-white/60 transition hover:text-white" data-ms="6000" aria-pressed="false">6s</button>
-                        <button class="velocidad rounded-xl py-2 text-sm font-bold text-white/60 transition hover:text-white" data-ms="8000" aria-pressed="true">8s</button>
-                        <button class="velocidad rounded-xl py-2 text-sm font-bold text-white/60 transition hover:text-white" data-ms="12000" aria-pressed="false">12s</button>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Columna derecha: historial y tablero -->
-        <section class="flex min-w-0 flex-col gap-6" aria-label="Tablero">
-            <div class="panel p-5" data-entrada>
-                <div class="mb-3 flex items-center justify-between">
-                    <span class="etiqueta">Últimas bolas</span>
-                </div>
-                <ol id="historial" class="flex min-h-[56px] items-center gap-3 overflow-hidden" aria-label="Últimas bolas cantadas">
-                    <li class="text-sm text-white/30" id="historialVacio">Aún no sale ninguna bola. Pulsa <strong class="text-white/60">Iniciar</strong>.</li>
-                </ol>
-            </div>
-
-            <div class="panel flex flex-1 flex-col p-4 sm:p-5" data-entrada>
-                <div class="mb-4 flex items-center justify-between">
-                    <span class="etiqueta">Tablero</span>
-                    <span class="text-xs text-white/30">75 bolas</span>
-                </div>
-                <div class="flex flex-1 flex-col justify-center gap-6 lg:gap-10">
-                <!-- Móvil: 5 columnas verticales. Escritorio: 5 filas horizontales. -->
-                <div id="tablero"
-                     class="grid grid-flow-col grid-cols-5 grid-rows-[repeat(16,minmax(0,auto))] gap-1.5
-                            lg:grid-flow-row lg:grid-cols-[repeat(16,minmax(0,1fr))] lg:grid-rows-5 lg:gap-2">
-                </div>
-                <div>
-                    <p class="etiqueta mb-3">Por letra</p>
-                    <div id="porLetra" class="grid grid-cols-5 gap-2 sm:gap-3"></div>
-                </div>
-                </div>
-            </div>
-        </section>
-    </main>
-
-    <footer class="text-center text-xs text-white/25">Bingo 3D · Three.js · GSAP · Tailwind</footer>
+    <!-- Fin del juego -->
+    <div id="fin" class="absolute inset-0 z-20 hidden place-items-center lg:right-[424px]">
+        <div id="finSello" class="carta bg-girasol px-6 py-4 text-center shadow-duro-lg">
+            <p class="font-display text-3xl sm:text-5xl">¡Se acabaron!</p>
+            <p class="etiqueta mt-1">Salieron las 75 bolas</p>
+        </div>
+    </div>
 </div>
 
-<!-- Modal: ¡Bingo! -->
-<div id="modalBingo" class="fixed inset-0 z-40 hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="tituloBingo">
-    <div class="modal-fondo absolute inset-0 bg-black/70 backdrop-blur-sm" data-cerrar></div>
-    <div class="modal-caja panel relative w-full max-w-lg border-white/15 bg-slate-900/80 p-6 sm:p-8">
-        <h2 id="tituloBingo" class="text-center font-display text-6xl sm:text-7xl" aria-label="¡Bingo!">
-            <span class="titulo-letra inline-block text-bb">¡</span><span class="titulo-letra inline-block text-bb">B</span><span class="titulo-letra inline-block text-bi">I</span><span class="titulo-letra inline-block text-bn">N</span><span class="titulo-letra inline-block text-bg">G</span><span class="titulo-letra inline-block text-bo">O</span><span class="titulo-letra inline-block text-bo">!</span>
-        </h2>
-        <p class="mt-2 text-center text-white/60">
-            Juego en pausa · <strong id="bingoBolas" class="text-white">0</strong> bolas en <strong id="bingoTiempo" class="text-white">00:00</strong>
-        </p>
+<!-- Destello -->
+<div id="flash" class="pointer-events-none fixed inset-0 z-[45] bg-crema opacity-0"></div>
 
-        <label for="numerosCarton" class="etiqueta mt-6 block">Verificar cartón</label>
+<!-- Modal: ¡Bingo! -->
+<div id="modalBingo" class="fixed inset-0 z-40 hidden flex-col items-center justify-center gap-6 overflow-y-auto p-4 sm:gap-8" role="dialog" aria-modal="true" aria-labelledby="tituloBingo">
+    <div class="modal-fondo fixed inset-0 bg-escenario/85" data-cerrar></div>
+    <h2 id="tituloBingo" class="relative flex gap-2 sm:gap-4" aria-label="¡Bingo!">
+        <span class="letra-bingo bg-tomate" data-rot="-8">B</span>
+        <span class="letra-bingo bg-girasol" data-rot="5">I</span>
+        <span class="letra-bingo bg-menta" data-rot="-4">N</span>
+        <span class="letra-bingo bg-cobalto text-crema" data-rot="7">G</span>
+        <span class="letra-bingo bg-fucsia" data-rot="-6">O</span>
+    </h2>
+    <div class="modal-caja carta relative w-full max-w-md p-5 shadow-duro-lg sm:p-6">
+        <div id="sello" class="pointer-events-none absolute -right-2 -top-7 z-10 hidden rounded-xl border-4 px-4 py-1.5 font-display text-2xl shadow-duro sm:-right-6 sm:text-3xl"></div>
+        <p class="text-center font-ui font-bold text-tinta/70">
+            Juego en pausa · <strong id="bingoBolas" class="text-tinta">0</strong> bolas en <strong id="bingoTiempo" class="text-tinta">00:00</strong>
+        </p>
+        <label for="numerosCarton" class="etiqueta mt-5 block">Verificar cartón</label>
         <textarea id="numerosCarton" rows="2" placeholder="Escribe los números de la línea ganadora, ej: 5 18 33 52 71"
-                  class="mt-2 w-full resize-none rounded-2xl border border-white/10 bg-white/5 p-3 text-white placeholder:text-white/30 focus:border-white/30 focus:outline-none"></textarea>
-        <button id="verificarBtn" class="btn-ghost mt-2 w-full">Verificar números</button>
+                  class="mt-2 w-full resize-none rounded-xl border-[3px] border-tinta bg-white p-3 font-ui font-bold text-tinta placeholder:font-medium placeholder:text-tinta/35 focus:outline-none focus:ring-4 focus:ring-girasol"></textarea>
+        <button id="verificarBtn" class="boton mt-3 h-12 w-full bg-girasol">Verificar números</button>
 
         <div id="resultado" class="mt-4 hidden">
-            <p id="resultadoTexto" class="mb-3 text-center font-bold"></p>
+            <p id="resultadoTexto" class="mb-3 text-center font-ui font-black"></p>
             <div id="resultadoChips" class="flex flex-wrap justify-center gap-2"></div>
         </div>
 
         <div class="mt-6 grid grid-cols-2 gap-3">
-            <button id="seguirBtn" class="btn-ghost">Seguir jugando</button>
-            <button id="nuevaPartidaBtn" class="btn bg-white text-slate-900 hover:bg-white/90">Nueva partida</button>
+            <button id="seguirBtn" class="boton h-12 bg-crema">Seguir</button>
+            <button id="nuevaPartidaBtn" class="boton h-12 bg-tinta text-crema">Nueva partida</button>
         </div>
     </div>
 </div>
 
 <!-- Modal: confirmar reinicio -->
 <div id="modalReset" class="fixed inset-0 z-40 hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="tituloReset">
-    <div class="modal-fondo absolute inset-0 bg-black/70 backdrop-blur-sm" data-cerrar></div>
-    <div class="modal-caja panel relative w-full max-w-sm border-white/15 bg-slate-900/80 p-6 text-center">
-        <h2 id="tituloReset" class="font-display text-3xl">¿Reiniciar la partida?</h2>
-        <p class="mt-2 text-white/60">Se borrarán las bolas cantadas y el tiempo.</p>
+    <div class="modal-fondo absolute inset-0 bg-escenario/80" data-cerrar></div>
+    <div class="modal-caja carta relative w-full max-w-sm p-6 text-center shadow-duro-lg">
+        <h2 id="tituloReset" class="font-display text-2xl sm:text-3xl">¿Reiniciar?</h2>
+        <p class="mt-2 font-ui font-bold text-tinta/70">Las bolas vuelven al bombo y el tiempo empieza de cero.</p>
         <div class="mt-6 grid grid-cols-2 gap-3">
-            <button class="btn-ghost" data-cerrar>Cancelar</button>
-            <button id="confirmarResetBtn" class="btn bg-bb text-white hover:brightness-110">Reiniciar</button>
+            <button class="boton h-12 bg-crema" data-cerrar>Cancelar</button>
+            <button id="confirmarResetBtn" class="boton h-12 bg-tomate text-crema">Reiniciar</button>
         </div>
     </div>
 </div>
 
 <!-- Aviso flotante -->
-<div id="aviso" class="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-2xl border border-white/10 bg-slate-900/90 px-5 py-3 text-sm font-bold opacity-0 shadow-2xl backdrop-blur"></div>
+<div id="aviso" class="carta pointer-events-none fixed left-1/2 top-24 z-50 whitespace-nowrap px-4 py-2 font-ui text-sm font-black opacity-0 sm:top-28"></div>
+
+<!-- Telón de apertura -->
+<div id="telon" class="pointer-events-none fixed inset-0 z-[60] flex" aria-hidden="true">
+    <div class="telon telon-izq h-full w-1/2 border-r-4 border-tinta"></div>
+    <div class="telon telon-der h-full w-1/2 border-l-4 border-tinta"></div>
+</div>
 
 <script src="dist/app.js"></script>
 </body>
