@@ -118,19 +118,46 @@ export function crearEscenario(canvas, { columnaDe, colores, reducirMovimiento =
     suelo.position.y = SUELO;
     escena.add(plataforma, neon, suelo);
 
-    // Arco de marquesina detrás del bombo
-    const ARCO = Math.PI * 1.16;
-    const marco = new THREE.Mesh(new THREE.TorusGeometry(5, 0.24, 14, 90, ARCO), laca);
-    marco.position.set(0, -0.4, -3.6);
-    marco.rotation.z = -Math.PI * 0.08;
-    escena.add(marco);
+    // Marquesina detrás del bombo: dos patas apoyadas en el suelo y un
+    // semicírculo arriba, simétrica y centrada, con bombillas en todo el contorno.
+    const ARCO_R = 4.5;            // radio del semicírculo
+    const ARCO_Y = 0.1;          // altura donde empieza la curva
+    const ARCO_Z = -4.3;         // detrás del poste del bombo
+    const GROSOR = 0.24;
+    const largoPata = ARCO_Y - SUELO;
+    const curva = new THREE.Mesh(new THREE.TorusGeometry(ARCO_R, GROSOR, 14, 90, Math.PI), laca);
+    curva.position.set(0, ARCO_Y, ARCO_Z);
+    escena.add(curva);
+    for (const lado of [-1, 1]) {
+        const pata = new THREE.Mesh(new THREE.CylinderGeometry(GROSOR, GROSOR, largoPata, 14), laca);
+        pata.position.set(lado * ARCO_R, SUELO + largoPata / 2, ARCO_Z);
+        const anillo = new THREE.Mesh(new THREE.TorusGeometry(GROSOR + 0.02, 0.05, 8, 24), oro);
+        anillo.rotation.x = Math.PI / 2;
+        anillo.position.set(lado * ARCO_R, ARCO_Y, ARCO_Z);
+        const pie = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.52, 0.32, 24), oro);
+        pie.position.set(lado * ARCO_R, SUELO + 0.16, ARCO_Z);
+        escena.add(pata, anillo, pie);
+    }
 
     // ---------- Bombillas (instanciadas) ----------
+    // Repartidas a distancias iguales por pata izquierda → curva → pata derecha
     const posicionesBombillas = [];
-    const N_ARCO = 40;
+    const N_ARCO = 52;
+    const inicioPata = SUELO + 0.5;
+    const tramoPata = ARCO_Y - inicioPata;
+    const tramoCurva = Math.PI * ARCO_R;
+    const total = 2 * tramoPata + tramoCurva;
+    const zBombilla = ARCO_Z + GROSOR + 0.04;
     for (let i = 0; i < N_ARCO; i++) {
-        const a = -Math.PI * 0.08 + (ARCO * i) / (N_ARCO - 1);
-        posicionesBombillas.push(new THREE.Vector3(Math.cos(a) * 5, -0.4 + Math.sin(a) * 5, -3.6 + 0.26));
+        const s = (total * i) / (N_ARCO - 1);
+        if (s <= tramoPata) {
+            posicionesBombillas.push(new THREE.Vector3(-ARCO_R, inicioPata + s, zBombilla));
+        } else if (s <= tramoPata + tramoCurva) {
+            const a = Math.PI - (s - tramoPata) / ARCO_R;
+            posicionesBombillas.push(new THREE.Vector3(Math.cos(a) * ARCO_R, ARCO_Y + Math.sin(a) * ARCO_R, zBombilla));
+        } else {
+            posicionesBombillas.push(new THREE.Vector3(ARCO_R, ARCO_Y + tramoPata + tramoCurva - s, zBombilla));
+        }
     }
     const N_ARO = 44;
     for (let i = 0; i < N_ARO; i++) {
@@ -152,6 +179,7 @@ export function crearEscenario(canvas, { columnaDe, colores, reducirMovimiento =
     escena.add(bombillas);
     const coloresLuz = colores.map((c) => new THREE.Color(c));
     const colorTmp = new THREE.Color();
+    const colorMarquesina = new THREE.Color('#ffd98a');
 
     // ---------- Focos (haces de luz volumétricos falsos) ----------
     const haces = [-6.5, -2.4, 2.4, 6.5].map((x, i) => {
@@ -357,11 +385,14 @@ export function crearEscenario(canvas, { columnaDe, colores, reducirMovimiento =
         // Bombillas
         const paso = t * luces.velocidad;
         for (let i = 0; i < posicionesBombillas.length; i++) {
+            const enArco = i < N_ARCO;
             let brillo;
             if (luces.modo === 'apagado') brillo = 0.04;
             else if (luces.modo === 'arcoiris') brillo = ((i + Math.floor(paso)) % 2 === 0) ? 2.2 : 0.3;
+            // Marquesina: todas encendidas y un destello que la recorre; aro del suelo: persecución
+            else if (enArco) brillo = ((i - paso) % 4 + 4) % 4 < 1 ? 2.6 : 0.85;
             else brillo = ((i - paso) % 5 + 5) % 5 < 2 ? 2.2 : 0.15;
-            colorTmp.copy(coloresLuz[Math.floor(i / 2) % coloresLuz.length]);
+            colorTmp.copy(enArco ? colorMarquesina : coloresLuz[Math.floor(i / 2) % coloresLuz.length]);
             if (luces.modo === 'arcoiris') colorTmp.copy(coloresLuz[(i + Math.floor(paso / 2)) % coloresLuz.length]);
             colorTmp.multiplyScalar(brillo).lerp(tmpColorDestello(), luces.destello);
             bombillas.setColorAt(i, colorTmp);

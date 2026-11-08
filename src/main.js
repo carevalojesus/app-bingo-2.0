@@ -369,6 +369,7 @@ function bingo() {
     }
     pausar();
     $('bingoBolas').textContent = estado.salidas.size;
+    $('bingoBolasPalabra').textContent = estado.salidas.size === 1 ? 'bola' : 'bolas';
     $('bingoTiempo').textContent = formatoTiempo(tiempoTranscurrido());
     $('codigoCarton').value = '';
     $('numerosCarton').value = '';
@@ -578,6 +579,7 @@ document.addEventListener('keydown', (e) => {
         e.preventDefault();
         if (!estado.terminado) alternarJuego();
     } else if (e.key.toLowerCase() === 'b') {
+        e.preventDefault(); // si no, la "b" se escribe en el campo del código al abrir el modal
         bingo();
     } else if (e.key.toLowerCase() === 'r') {
         pedirReinicio();

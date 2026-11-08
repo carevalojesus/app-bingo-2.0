@@ -83,8 +83,8 @@
                         <circle cx="50" cy="50" r="46" fill="none" stroke="#fff3df" stroke-opacity="0.2" stroke-width="6"/>
                         <circle id="anillo" cx="50" cy="50" r="46" fill="none" stroke="#ffc43d" stroke-width="6" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
                     </svg>
-                    <button id="playBtn" class="boton h-14 w-14 rounded-full bg-girasol sm:h-16 sm:w-16" aria-label="Iniciar" title="Iniciar / pausar (Espacio)">
-                        <svg id="iconoPlay" class="ml-1 h-7 w-7" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></svg>
+                    <button id="playBtn" class="boton h-14 w-14 rounded-full bg-girasol shadow-[0_4px_0_0_#14112b] hover:translate-x-0 hover:shadow-[0_6px_0_0_#14112b] active:translate-x-0 active:translate-y-[4px] active:shadow-none sm:h-16 sm:w-16" aria-label="Iniciar" title="Iniciar / pausar (Espacio)">
+                        <svg id="iconoPlay" class="h-7 w-7" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></svg>
                         <svg id="iconoPausa" class="hidden h-7 w-7" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="4" width="5" height="16" rx="1.5"/><rect x="14" y="4" width="5" height="16" rx="1.5"/></svg>
                     </button>
                 </div>
@@ -142,7 +142,7 @@
 <div id="flash" class="pointer-events-none fixed inset-0 z-[45] bg-crema opacity-0"></div>
 
 <!-- Modal: ¡Bingo! -->
-<div id="modalBingo" class="fixed inset-0 z-40 hidden flex-col items-center justify-center gap-6 overflow-y-auto p-4 sm:gap-8" role="dialog" aria-modal="true" aria-labelledby="tituloBingo">
+<div id="modalBingo" class="fixed inset-0 z-40 hidden flex-col items-center gap-6 overflow-y-auto p-4 [justify-content:safe_center] sm:gap-8" role="dialog" aria-modal="true" aria-labelledby="tituloBingo">
     <div class="modal-fondo fixed inset-0 bg-escenario/85" data-cerrar></div>
     <h2 id="tituloBingo" class="relative flex gap-2 sm:gap-4" aria-label="¡Bingo!">
         <span class="letra-bingo bg-tomate" data-rot="-8">B</span>
@@ -154,7 +154,7 @@
     <div class="modal-caja carta relative w-full max-w-md p-5 shadow-duro-lg sm:p-6">
         <div id="sello" class="pointer-events-none absolute -right-2 -top-7 z-10 hidden rounded-xl border-4 px-4 py-1.5 font-display text-2xl shadow-duro sm:-right-6 sm:text-3xl"></div>
         <p class="text-center font-ui font-bold text-tinta/70">
-            Juego en pausa · <strong id="bingoBolas" class="text-tinta">0</strong> bolas en <strong id="bingoTiempo" class="text-tinta">00:00</strong>
+            Juego en pausa · <strong id="bingoBolas" class="text-tinta">0</strong> <span id="bingoBolasPalabra">bolas</span> en <strong id="bingoTiempo" class="text-tinta">00:00</strong>
         </p>
         <div class="mt-5 flex items-baseline justify-between gap-2">
             <span id="tituloModalidad" class="etiqueta">Modalidad</span>
