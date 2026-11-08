@@ -4,11 +4,13 @@
   "private": true,
   "description": "Bingo 3D con Three.js, GSAP y Tailwind",
   "scripts": {
-    "build:js": "esbuild app=src/main.js cartones=src/cartones.js --bundle --format=iife --target=es2020 --outdir=dist --minify",
+    "build:js": "esbuild app=src/main.js cartones=src/cartones.js jugador=src/jugador.js sala=src/sala.js --bundle --format=iife --target=es2020 --outdir=dist --minify",
     "build:css": "tailwindcss -i src/styles.css -o dist/styles.css --minify",
     "build": "npm run build:js && npm run build:css",
-    "dev": "npm run build:css -- --watch=always & esbuild app=src/main.js cartones=src/cartones.js --bundle --format=iife --target=es2020 --outdir=dist --watch=forever",
-    "test": "node --test test/*.test.mjs"
+    "dev": "npm run build:css -- --watch=always & esbuild app=src/main.js cartones=src/cartones.js jugador=src/jugador.js sala=src/sala.js --bundle --format=iife --target=es2020 --outdir=dist --watch=forever",
+    "test": "node --test test/*.test.mjs",
+    "dev:worker": "wrangler dev",
+    "deploy": "npm run build && wrangler deploy"
   },
   "devDependencies": {
     "@fontsource/archivo": "^5.1.0",
@@ -16,7 +18,8 @@
     "esbuild": "^0.24.0",
     "gsap": "^3.12.5",
     "tailwindcss": "^3.4.16",
-    "three": "^0.160.0"
+    "three": "^0.160.0",
+    "wrangler": "^4.158.0"
   },
   "type": "module"
 }
