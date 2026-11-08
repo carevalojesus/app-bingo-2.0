@@ -12,7 +12,18 @@ import { texturaBola, texturaChispa } from './texturas.js';
 const R = 2;          // radio interior del bombo
 const RJ = R + 0.07;  // radio de la jaula
 const r = 0.2;        // radio de cada bola
-const GRAVEDAD = 9.8;
+// Paletas soldadas por dentro de la jaula: suben las bolas y las sueltan en cascada
+const PALETAS = 4;
+const ALTO_PALETA = 0.4;                      // lo que sobresale de la pared (≈ una bola)
+const Z_PALETA = 1.45;                        // no llegan a los polos, donde está el eje
+const ESPESOR_PALETA = 0.03;
+// Escala: 1 unidad = 10 cm (bola de 4 cm de diámetro en un bombo de 40 cm), así que la
+// gravedad real son 98 u/s². El bombo voltea las bolas por debajo de ω = √(g/R) ≈ 7 rad/s;
+// por encima las pega a la pared como una centrifugadora.
+const GRAVEDAD = 98;
+const GIRO_REPOSO = 1.0;   // ~0,16 vueltas/s: las paletas suben unas pocas bolas y el resto rueda
+const GIRO_SORTEO = 6.8;   // cerca del crítico: las bolas voltean y rebotan con fuerza
+const GIRO_FIESTA = 8.5;   // por encima del crítico, solo un momento en la celebración
 const SUELO = -3.05;
 const FONDO = '#1a0d36';
 const ANCHO_PIZARRA = 424; // px que ocupa la pizarra en escritorio
@@ -85,6 +96,18 @@ export function crearEscenario(canvas, { columnaDe, colores, reducirMovimiento =
         tapa.position.z = z;
         jaula.add(tapa);
     }
+    // Paletas: tiras curvas en planos que contienen el eje (giran con la jaula)
+    const arcoPaleta = Math.asin(Z_PALETA / R);
+    for (let k = 0; k < PALETAS; k++) {
+        const paleta = new THREE.Mesh(
+            new THREE.RingGeometry(R - ALTO_PALETA, R + 0.02, 48, 1, -arcoPaleta, 2 * arcoPaleta),
+            new THREE.MeshStandardMaterial({ color: '#e9a93a', metalness: 1, roughness: 0.35, envMapIntensity: 0.7, side: THREE.DoubleSide }),
+        );
+        paleta.rotation.order = 'ZYX'; // primero se pone vertical (X), luego se orienta (Z)
+        paleta.rotation.set(Math.PI / 2, 0, (k * Math.PI * 2) / PALETAS + Math.PI / PALETAS);
+        jaula.add(paleta);
+    }
+
     const cristal = new THREE.Mesh(
         new THREE.SphereGeometry(R + 0.02, 48, 32),
         new THREE.MeshPhysicalMaterial({ color: '#ffffff', roughness: 0.04, transparent: true, opacity: 0.04, clearcoat: 1, depthWrite: false, envMapIntensity: 0.6 }),
@@ -231,7 +254,7 @@ export function crearEscenario(canvas, { columnaDe, colores, reducirMovimiento =
         mesh.visible = false;
         mesh.quaternion.setFromEuler(new THREE.Euler(Math.random() * 6, Math.random() * 6, Math.random() * 6));
         escena.add(mesh);
-        const bola = { n, info, mesh, textura, p: V(), v: V(), estado: 'fuera' };
+        const bola = { n, info, mesh, textura, p: V(), v: V(), w: V(), estado: 'fuera' };
         bolas.push(bola);
         porNumero.set(n, bola);
     }
@@ -266,63 +289,226 @@ export function crearEscenario(canvas, { columnaDe, colores, reducirMovimiento =
     }
 
     // ---------- Física de las bolas dentro del bombo ----------
+    // Esferas rígidas (m = 1, I = 2/5·m·r²) resueltas con impulsos: rebote con restitución y
+    // rozamiento de Coulomb en el punto de contacto, que es lo que las hace rodar y girar.
+    // Pasos fijos de 1/240 s para que el resultado no dependa de los fps.
+    const PASO = 1 / 240;
+    const ITERACIONES = 2;
+    const REBOTE_BOLAS = 0.6;   // bolas de plástico duro
+    const REBOTE_PARED = 0.4;   // jaula de alambre
+    const ROCE_BOLAS = 0.15;
+    const ROCE_PARED = 0.4;
+    const INV_INERCIA = 5 / (2 * r * r);
+    const VEL_MAX = 45;
+    // Los 6 meridianos de alambre forman 12 varillas (cada π/6) que actúan como paletas:
+    // son las que suben las bolas por la pared, igual que en un bombo real.
+    const VARILLAS = 12;
+    const GROSOR_ALAMBRE = 0.1; // efectivo: incluye los cruces con los paralelos
+    const REBOTE_VARILLA = 0.3;
+    const REBOTE_PALETA = 0.35;
+    const ROCE_PALETA = 0.35;
+    const cercano = V();
+    let acumulado = 0;
+
     const tmpA = V();
     const tmpB = V();
-    const tmpW = V();
+    const normal = V();
+    const opuesta = V();
+    const relativa = V();
+    const tangente = V();
+    const impulso = V();
+    const brazo = V();
+    const velA = V();
+    const velB = V();
+    const pared = V();
 
-    function pasoFisica(dt) {
-        const activas = bolas.filter((b) => b.estado === 'bombo');
-        const w = bombo.omega;
-        for (const b of activas) {
-            b.v.y -= GRAVEDAD * dt;
-            b.v.multiplyScalar(0.999);
-            b.p.addScaledVector(b.v, dt);
-        }
-        // Choques entre bolas
+    // Velocidad del punto de la superficie de la bola en la dirección `dir`: v + ω × (r·dir)
+    function velocidadEn(b, dir, destino) {
+        return destino.crossVectors(b.w, brazo.copy(dir).multiplyScalar(r)).add(b.v);
+    }
+    // Impulso J aplicado en el punto r·dir de la bola: cambia su velocidad y su giro
+    function aplicar(b, dir, J) {
+        b.v.add(J);
+        b.w.addScaledVector(brazo.copy(dir).multiplyScalar(r).cross(J), INV_INERCIA);
+    }
+
+    function choqueBolas(a, b) {
+        normal.subVectors(b.p, a.p);
+        const d2 = normal.lengthSq();
         const minimo = 2 * r;
-        for (let i = 0; i < activas.length; i++) {
-            const a = activas[i];
-            for (let j = i + 1; j < activas.length; j++) {
-                const b = activas[j];
-                tmpA.subVectors(b.p, a.p);
-                const d2 = tmpA.lengthSq();
-                if (d2 >= minimo * minimo || d2 === 0) continue;
-                const d = Math.sqrt(d2);
-                tmpA.divideScalar(d);
-                const solape = (minimo - d) / 2;
-                a.p.addScaledVector(tmpA, -solape);
-                b.p.addScaledVector(tmpA, solape);
-                const rel = tmpB.subVectors(b.v, a.v).dot(tmpA);
-                if (rel < 0) {
-                    const impulso = (-(1 + 0.55) * rel) / 2;
-                    a.v.addScaledVector(tmpA, -impulso);
-                    b.v.addScaledVector(tmpA, impulso);
-                }
-            }
+        if (d2 >= minimo * minimo || d2 === 0) return;
+        const d = Math.sqrt(d2);
+        normal.divideScalar(d);
+        opuesta.copy(normal).negate();
+        // Separación (con un poco de holgura para que las pilas no tiemblen)
+        const correccion = Math.max(0, minimo - d - 0.002) * 0.5;
+        a.p.addScaledVector(normal, -correccion);
+        b.p.addScaledVector(normal, correccion);
+
+        relativa.subVectors(velocidadEn(b, opuesta, velB), velocidadEn(a, normal, velA));
+        const vn = relativa.dot(normal);
+        if (vn >= 0) return;
+        const e = vn < -1 ? REBOTE_BOLAS : 0;
+        const jn = (-(1 + e) * vn) / 2;
+        impulso.copy(normal).multiplyScalar(jn);
+        // Rozamiento: anula el deslizamiento hasta el límite de Coulomb (μ·jn)
+        tangente.copy(relativa).addScaledVector(normal, -vn);
+        const desliz = tangente.length();
+        if (desliz > 1e-6) {
+            const jt = Math.min(desliz / 7, ROCE_BOLAS * jn); // masa efectiva tangencial: 1/(2·(1 + r²/I))
+            impulso.addScaledVector(tangente, -jt / desliz);
         }
-        // Choques con la pared del bombo (que gira y arrastra las bolas)
+        aplicar(b, opuesta, impulso);
+        aplicar(a, normal, impulso.negate());
+    }
+
+    function choquePared(b, w) {
         const limite = R - r;
-        for (const b of activas) {
-            const len = b.p.length();
-            if (len <= limite) continue;
-            tmpA.copy(b.p).divideScalar(len); // normal hacia fuera
-            b.p.copy(tmpA).multiplyScalar(limite);
-            const vn = b.v.dot(tmpA);
-            if (vn > 0) b.v.addScaledVector(tmpA, -vn * 1.45);
-            // Velocidad de la pared en ese punto: ω ẑ × p
-            tmpW.set(-w * b.p.y, w * b.p.x, 0);
-            tmpW.addScaledVector(tmpA, -tmpW.dot(tmpA));
-            tmpB.copy(b.v).addScaledVector(tmpA, -b.v.dot(tmpA)); // tangencial de la bola
-            b.v.addScaledVector(tmpB.sub(tmpW), -0.12);
+        const len = b.p.length();
+        if (len <= limite) return;
+        normal.copy(b.p).divideScalar(len);
+        b.p.copy(normal).multiplyScalar(limite);
+        // Velocidad de la jaula en el punto de contacto: ω ẑ × (R·n)
+        pared.set(-w * R * normal.y, w * R * normal.x, 0);
+        relativa.subVectors(velocidadEn(b, normal, velA), pared);
+        const vn = relativa.dot(normal);
+        if (vn <= 0) return;
+        const e = vn > 1 ? REBOTE_PARED : 0;
+        const jn = (1 + e) * vn;
+        impulso.copy(normal).multiplyScalar(-jn);
+        tangente.copy(relativa).addScaledVector(normal, -vn);
+        const desliz = tangente.length();
+        if (desliz > 1e-6) {
+            const jt = Math.min(desliz / 3.5, ROCE_PARED * jn); // 1/(1 + r²/I) con la pared fija
+            impulso.addScaledVector(tangente, -jt / desliz);
+        }
+        aplicar(b, normal, impulso);
+        choqueVarilla(b, w);
+    }
+
+    // Choque esfera–paleta: punto de la paleta más cercano al centro de la bola (cara o borde)
+    function choquePaletas(b, w) {
+        for (let k = 0; k < PALETAS; k++) {
+            const angulo = bombo.angulo + (k * Math.PI * 2) / PALETAS + Math.PI / PALETAS;
+            const ux = Math.cos(angulo);
+            const uy = Math.sin(angulo);
+            // Coordenadas de la bola en el plano de la paleta: s (hacia fuera) y z (a lo largo del eje)
+            let sP = b.p.x * ux + b.p.y * uy;
+            if (sP < -r) continue; // está en el otro semiplano
+            let zP = Math.max(-Z_PALETA, Math.min(Z_PALETA, b.p.z));
+            sP = Math.max(0, sP);
+            const rho = Math.hypot(sP, zP);
+            if (rho < 1e-6) continue;
+            const radio = Math.max(R - ALTO_PALETA, Math.min(R, rho));
+            sP *= radio / rho;
+            zP *= radio / rho;
+            cercano.set(sP * ux, sP * uy, zP);
+
+            normal.subVectors(b.p, cercano);
+            const d = normal.length();
+            const minimo = r + ESPESOR_PALETA / 2;
+            if (d >= minimo || d === 0) continue;
+            normal.divideScalar(d);
+            b.p.addScaledVector(normal, minimo - d);
+
+            pared.set(-w * cercano.y, w * cercano.x, 0); // velocidad de la paleta en ese punto
+            opuesta.copy(normal).negate();
+            relativa.subVectors(velocidadEn(b, opuesta, velA), pared);
+            const vn = relativa.dot(normal);
+            if (vn >= 0) continue;
+            const e = vn < -1 ? REBOTE_PALETA : 0;
+            const jn = -(1 + e) * vn;
+            impulso.copy(normal).multiplyScalar(jn);
+            tangente.copy(relativa).addScaledVector(normal, -vn);
+            const desliz = tangente.length();
+            if (desliz > 1e-6) impulso.addScaledVector(tangente, -Math.min(desliz / 3.5, ROCE_PALETA * jn) / desliz);
+            aplicar(b, opuesta, impulso);
         }
     }
 
-    function patear(fuerza) {
-        for (const b of bolas) {
-            if (b.estado !== 'bombo') continue;
-            b.v.x += (Math.random() - 0.5) * fuerza;
-            b.v.y += Math.random() * fuerza;
-            b.v.z += (Math.random() - 0.5) * fuerza;
+    // Choque esfera–alambre con el meridiano más cercano. La normal va del alambre al centro de la
+    // bola: casi radial y solo un poco de lado, así que el alambre arrastra la bola mientras la
+    // pared está poco inclinada y, más arriba, la gravedad la hace rodar por encima. Por eso
+    // a poca velocidad las bolas solo ruedan por el fondo y a mucha suben y caen en cascada.
+    function choqueVarilla(b, w) {
+        const separacion = (Math.PI * 2) / VARILLAS;
+        const k = Math.round((Math.atan2(b.p.y, b.p.x) - bombo.angulo) / separacion);
+        const angulo = bombo.angulo + k * separacion;
+        const nx = -Math.sin(angulo);
+        const ny = Math.cos(angulo);
+        const lateral = b.p.x * nx + b.p.y * ny; // distancia al plano del meridiano
+        const px = b.p.x - lateral * nx;
+        const py = b.p.y - lateral * ny;
+        const largo = Math.hypot(px, py, b.p.z);
+        if (largo < 1e-6) return;
+        // Punto del alambre más cercano (el meridiano es un círculo de radio R en ese plano)
+        const wx = (px / largo) * R;
+        const wy = (py / largo) * R;
+        const wz = (b.p.z / largo) * R;
+        normal.set(b.p.x - wx, b.p.y - wy, b.p.z - wz);
+        const d = normal.length();
+        const minimo = r + GROSOR_ALAMBRE;
+        if (d >= minimo || d === 0) return;
+        normal.divideScalar(d);
+        b.p.addScaledVector(normal, minimo - d);
+
+        pared.set(-w * wy, w * wx, 0); // velocidad del alambre: ω ẑ × W
+        opuesta.copy(normal).negate(); // punto de la bola que toca el alambre
+        relativa.subVectors(velocidadEn(b, opuesta, velA), pared);
+        const vn = relativa.dot(normal);
+        if (vn >= 0) return;
+        const e = vn < -1 ? REBOTE_VARILLA : 0;
+        const jn = -(1 + e) * vn;
+        impulso.copy(normal).multiplyScalar(jn);
+        tangente.copy(relativa).addScaledVector(normal, -vn);
+        const desliz = tangente.length();
+        if (desliz > 1e-6) impulso.addScaledVector(tangente, -Math.min(desliz / 3.5, ROCE_PARED * jn) / desliz);
+        aplicar(b, opuesta, impulso);
+    }
+
+    function pasoFisica(dt, activas) {
+        const w = bombo.omega;
+        const frenoLineal = 1 - 0.05 * dt;
+        const frenoGiro = 1 - 0.8 * dt; // resistencia a la rodadura
+        for (const b of activas) {
+            b.v.y -= GRAVEDAD * dt;
+            b.v.multiplyScalar(frenoLineal);
+            if (b.v.lengthSq() > VEL_MAX * VEL_MAX) b.v.setLength(VEL_MAX);
+            b.w.multiplyScalar(frenoGiro);
+            b.p.addScaledVector(b.v, dt);
+        }
+        for (let k = 0; k < ITERACIONES; k++) {
+            for (let i = 0; i < activas.length; i++) {
+                for (let j = i + 1; j < activas.length; j++) choqueBolas(activas[i], activas[j]);
+            }
+            for (const b of activas) {
+                choquePaletas(b, w);
+                choquePared(b, w); // la pared al final: nada puede dejar una bola fuera de la jaula
+            }
+        }
+    }
+
+    function simular(dtFotograma) {
+        const activas = bolas.filter((b) => b.estado === 'bombo');
+        acumulado = Math.min(acumulado + dtFotograma, PASO * 10);
+        while (acumulado >= PASO) {
+            pasoFisica(PASO, activas);
+            acumulado -= PASO;
+        }
+        for (const b of activas) {
+            b.mesh.position.copy(b.p);
+            const giro = b.w.length();
+            if (giro > 1e-4) b.mesh.rotateOnWorldAxis(tmpA.copy(b.w).divideScalar(giro), giro * dtFotograma);
+        }
+    }
+
+    // Saca del bombo, sin animar, las bolas que ya salieron (al reconectar a mitad de partida)
+    function retirar(numeros) {
+        for (const n of numeros) {
+            const b = porNumero.get(n);
+            if (!b || b.estado !== 'bombo') continue;
+            b.estado = 'fuera';
+            b.mesh.visible = false;
         }
     }
 
@@ -331,6 +517,7 @@ export function crearEscenario(canvas, { columnaDe, colores, reducirMovimiento =
             b.estado = 'bombo';
             b.p.set((Math.random() - 0.5) * 1.2, R - r - 0.2 - Math.random() * 0.3, (Math.random() - 0.5) * 1.2);
             b.v.set((Math.random() - 0.5) * 2, -1.5, (Math.random() - 0.5) * 2);
+            b.w.set((Math.random() - 0.5) * 20, (Math.random() - 0.5) * 20, (Math.random() - 0.5) * 20);
             b.mesh.position.copy(b.p);
             b.mesh.visible = true;
             b.mesh.material.map = b.textura;
@@ -367,20 +554,10 @@ export function crearEscenario(canvas, { columnaDe, colores, reducirMovimiento =
         const dt = Math.min(reloj.getDelta(), 1 / 30);
         const t = reloj.elapsedTime;
 
-        // Bombo y física (2 subpasos)
+        // Bombo y física
         bombo.angulo += bombo.omega * dt;
         jaula.rotation.z = bombo.angulo;
-        pasoFisica(dt / 2);
-        pasoFisica(dt / 2);
-        for (const b of bolas) {
-            if (b.estado !== 'bombo') continue;
-            b.mesh.position.copy(b.p);
-            const rapidez = b.v.length();
-            if (rapidez > 0.01) {
-                tmpA.set(b.v.z, 0, -b.v.x).normalize();
-                if (tmpA.lengthSq() > 0) b.mesh.rotateOnWorldAxis(tmpA, (rapidez * dt) / r);
-            }
-        }
+        simular(dt);
 
         // Bombillas
         const paso = t * luces.velocidad;
@@ -469,7 +646,7 @@ export function crearEscenario(canvas, { columnaDe, colores, reducirMovimiento =
         });
         tl.to(focos, { intensidad: 0.22, duration: 0.4 }, 1.4);
         tl.call(() => { luces.modo = 'persecucion'; }, null, 1.3);
-        tl.to(bombo, { omega: 0.75, duration: 1.5, ease: 'power2.inOut' }, 1.2);
+        tl.to(bombo, { omega: GIRO_REPOSO, duration: 1.5, ease: 'power2.inOut' }, 1.2);
         bolas.forEach((b, i) => tl.add(meterBola(b), 0.9 + i * 0.022));
         return tl;
     }
@@ -484,11 +661,9 @@ export function crearEscenario(canvas, { columnaDe, colores, reducirMovimiento =
         tlSorteo = tl;
 
         // 1. El bombo acelera y los focos apuntan al bombo
-        tl.to(bombo, { omega: 9, duration: 0.45 * f, ease: 'power2.in' }, 0)
+        tl.to(bombo, { omega: GIRO_SORTEO, duration: 0.45 * f, ease: 'power2.in' }, 0)
             .to(focos, { enfoque: 1, velocidad: 3, duration: 0.4 * f }, 0)
-            .to(luces, { velocidad: 24, duration: 0.4 * f }, 0)
-            .call(() => patear(4), null, 0.2 * f)
-            .call(() => patear(3), null, 0.5 * f);
+            .to(luces, { velocidad: 24, duration: 0.4 * f }, 0);
 
         // 2. La bola sale disparada y vuela hacia la cámara
         const vuelo = { t: 0 };
@@ -499,6 +674,7 @@ export function crearEscenario(canvas, { columnaDe, colores, reducirMovimiento =
             duration: 0.8 * f,
             ease: 'power2.inOut',
             onStart() {
+                if (p0) return; // ya preparado
                 b.estado = 'vuelo';
                 b.mesh.visible = true;
                 b.mesh.scale.setScalar(1);
@@ -513,6 +689,8 @@ export function crearEscenario(canvas, { columnaDe, colores, reducirMovimiento =
                 onSalida?.();
             },
             onUpdate() {
+                // Si se saltó la línea de tiempo, GSAP puede llamar aquí sin haber pasado por onStart
+                if (!p0) this.vars.onStart.call(this);
                 const e = vuelo.t;
                 const u = 1 - e;
                 b.mesh.position.set(
@@ -535,7 +713,7 @@ export function crearEscenario(canvas, { columnaDe, colores, reducirMovimiento =
             sacudir(0.18);
             onRevelar?.();
         }, null, t3)
-            .to(bombo, { omega: 0.75, duration: 1.8, ease: 'power2.out' }, t3)
+            .to(bombo, { omega: GIRO_REPOSO, duration: 1.8, ease: 'power2.out' }, t3)
             .to(focos, { enfoque: 0, velocidad: 1, duration: 1.5 }, t3)
             .to(luces, { velocidad: 6, duration: 1.2 }, t3);
 
@@ -544,6 +722,7 @@ export function crearEscenario(canvas, { columnaDe, colores, reducirMovimiento =
         tl.to(balanceo, {
             a: 1, duration: 0.6 * f, ease: 'sine.inOut',
             onUpdate() {
+                if (!qCara) return;
                 b.mesh.quaternion.copy(qCara).multiply(giroTmp.setFromAxisAngle(EJE_Y, Math.sin(balanceo.a * Math.PI * 2) * 0.22));
             },
         }, t3);
@@ -557,10 +736,12 @@ export function crearEscenario(canvas, { columnaDe, colores, reducirMovimiento =
             duration: 0.3 * f,
             ease: 'power3.in',
             onStart() {
+                if (pInicio) return;
                 pInicio = b.mesh.position.clone();
                 pFinal = camara.position.clone().add(pInicio.clone().sub(camara.position).normalize().multiplyScalar(camara.near + 0.5));
             },
             onUpdate() {
+                if (!pInicio) this.vars.onStart.call(this);
                 b.mesh.position.lerpVectors(pInicio, pFinal, zoom.t);
             },
         }, t4);
@@ -593,13 +774,11 @@ export function crearEscenario(canvas, { columnaDe, colores, reducirMovimiento =
         tlSorteo?.progress(1);
         const tl = gsap.timeline();
         luces.modo = 'arcoiris';
-        tl.to(bombo, { omega: 16, duration: 0.5, ease: 'power2.in' }, 0)
-            .to(bombo, { omega: 0.75, duration: 3.5, ease: 'power2.out' }, 0.9)
+        tl.to(bombo, { omega: GIRO_FIESTA, duration: 0.6, ease: 'power2.in' }, 0)
+            .to(bombo, { omega: GIRO_REPOSO, duration: 3.5, ease: 'power2.out' }, 1.4)
             .to(focos, { velocidad: 6, intensidad: 0.4, duration: 0.3 }, 0)
             .to(focos, { velocidad: 1, intensidad: 0.22, duration: 2 }, 3)
             .to(luces, { velocidad: 10, duration: 0.3 }, 0)
-            .call(() => patear(7), null, 0.3)
-            .call(() => patear(7), null, 0.9)
             .call(() => { luces.modo = 'persecucion'; luces.velocidad = 6; }, null, 4.5);
         if (!reducirMovimiento) {
             tl.to(cam, { ang: `+=${Math.PI * 2}`, duration: 3.6, ease: 'power2.inOut', onComplete: () => { cam.ang = 0.42; } }, 0.2);
@@ -616,8 +795,8 @@ export function crearEscenario(canvas, { columnaDe, colores, reducirMovimiento =
     function reiniciar() {
         tlSorteo?.progress(1);
         luces.modo = 'persecucion';
-        gsap.to(bombo, { omega: 3, duration: 0.3, yoyo: true, repeat: 1 });
-        gsap.to(bombo, { omega: 0.75, duration: 1.2, delay: 0.7 });
+        gsap.to(bombo, { omega: 4.5, duration: 0.4, yoyo: true, repeat: 1 });
+        gsap.to(bombo, { omega: GIRO_REPOSO, duration: 1.2, delay: 0.8 });
         bolas.filter((b) => b.estado === 'fuera').forEach((b, i) => meterBola(b, 0.2 + i * 0.03));
         gsap.to(focos, { intensidad: 0.22, duration: 0.6 });
     }
@@ -628,5 +807,5 @@ export function crearEscenario(canvas, { columnaDe, colores, reducirMovimiento =
         luces.velocidad = 2;
     }
 
-    return { intro, sortear, celebrar, reiniciar, terminar, sacudir };
+    return { intro, sortear, celebrar, reiniciar, terminar, sacudir, retirar };
 }
