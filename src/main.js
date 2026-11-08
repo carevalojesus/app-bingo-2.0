@@ -49,6 +49,10 @@ let proximaBola = null;
 let relojTiempo = null;
 let ultimaCasilla = null;
 let escenario = null;
+let tlFicha = null;
+let finPendiente = null;
+// Sube en cada reinicio: los callbacks de una bola de la partida anterior se ignoran
+let partida = 0;
 
 function mezclar(arreglo) {
     for (let i = arreglo.length - 1; i > 0; i--) {
@@ -126,7 +130,8 @@ function mostrarActual(n) {
     const ficha = $('fichaActual');
     const anterior = estado.indice > 0 ? estado.bolas[estado.indice - 1] : null;
 
-    gsap.timeline()
+    tlFicha?.kill();
+    tlFicha = gsap.timeline()
         .to(ficha, { rotationY: 90, duration: 0.15, ease: 'power2.in' })
         .call(() => {
             ficha.style.setProperty('--c', color);
@@ -188,22 +193,29 @@ function sacarBola() {
     const info = { ...columnaDe(n), numero: n };
     estado.salidas.add(n);
     const f = ritmo();
+    const id = partida;
+    const vigente = () => id === partida;
+    // Si se abre un modal (¡Bingo!, reiniciar) la bola se completa en silencio
+    const enEscena = () => vigente() && !modalAbierto;
 
     if (estado.sonido) sfx.redoble(1.5 * f);
     escenario.sortear(n, {
         ritmo: f,
-        onSalida: () => estado.sonido && sfx.silbido(0.8 * f),
-        onRevelar: () => estado.sonido && sfx.campana(),
+        onSalida: () => enEscena() && estado.sonido && sfx.silbido(0.8 * f),
+        onRevelar: () => enEscena() && estado.sonido && sfx.campana(),
         onImpacto: () => {
-            if (estado.sonido) {
-                sfx.golpe();
-                gsap.delayedCall(0.35, () => estado.sonido && sfx.cantar(`${info.letra}, ${n}`));
+            if (!vigente()) return;
+            if (enEscena()) {
+                if (estado.sonido) {
+                    sfx.golpe();
+                    gsap.delayedCall(0.35, () => enEscena() && estado.sonido && sfx.cantar(`${info.letra}, ${n}`));
+                }
+                anunciarBola(info, { ritmo: f, reducirMovimiento });
             }
-            anunciarBola(info, { ritmo: f, reducirMovimiento });
             marcarCasilla(n);
             mostrarActual(n);
             actualizarCuentas();
-            if (estado.indice >= TOTAL - 1) gsap.delayedCall(1.6, finDelJuego);
+            if (estado.indice >= TOTAL - 1) finPendiente = gsap.delayedCall(1.6, finDelJuego);
         },
     });
 
@@ -256,9 +268,13 @@ function finDelJuego() {
 }
 
 function reiniciar() {
+    partida++;
     pausar();
     proximaBola?.kill();
     proximaBola = null;
+    finPendiente?.kill();
+    finPendiente = null;
+    tlFicha?.kill();
     sfx.callar();
     Object.assign(estado, {
         bolas: mezclar(Array.from({ length: TOTAL }, (_, i) => i + 1)),
@@ -503,7 +519,15 @@ async function arrancar() {
     aplicarSonido();
     aplicarVelocidad();
     actualizarBotonPlay();
-    escenario = crearEscenario($('escena'), { columnaDe, colores: COLORES, reducirMovimiento });
+    let con3D = true;
+    try {
+        escenario = crearEscenario($('escena'), { columnaDe, colores: COLORES, reducirMovimiento });
+    } catch (error) {
+        console.warn('No se pudo iniciar la escena 3D:', error);
+        escenario = escenarioSin3D();
+        $('escena').classList.add('hidden');
+        con3D = false;
+    }
 
     const escritorio = window.innerWidth >= 1024;
     const tl = gsap.timeline();
@@ -523,6 +547,29 @@ async function arrancar() {
         tl.from('#pizarra', { x: 480, rotation: 6, duration: 1, ease: 'power4.out', clearProps: 'transform' }, 1.1)
             .from('#tablero .casilla-giro', { rotationX: -100, opacity: 0, duration: 0.5, ease: 'back.out(2)', stagger: { amount: 1, from: 'start' } }, 1.5);
     }
+    if (!con3D) tl.call(() => avisar('Modo sin 3D: el sorteo funciona igual'), null, 2.4);
+}
+
+// Sustituto de la escena cuando el navegador no tiene WebGL: misma interfaz,
+// sin bombo, pero los callbacks del sorteo se siguen llamando.
+function escenarioSin3D() {
+    const vacio = () => gsap.timeline();
+    let tlSorteo = null;
+    return {
+        intro: vacio,
+        celebrar() { tlSorteo?.progress(1); return vacio(); },
+        reiniciar() { tlSorteo?.progress(1); },
+        terminar() {},
+        sacudir() {},
+        sortear(_numero, { onSalida, onRevelar, onImpacto } = {}) {
+            tlSorteo?.progress(1);
+            tlSorteo = gsap.timeline()
+                .call(() => onSalida?.(), null, 0)
+                .call(() => onRevelar?.(), null, 0.4)
+                .call(() => onImpacto?.(), null, 0.6);
+            return tlSorteo;
+        },
+    };
 }
 
 arrancar();
