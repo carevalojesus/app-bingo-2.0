@@ -377,6 +377,12 @@ function dibujarLobby() {
         </div>
 
         <div class="carta mt-5 p-4">
+            <h2 class="font-display text-xl">¿Cómo quieres marcar?</h2>
+            <p class="mt-1 text-xs font-bold text-tinta/70">Puedes cambiarlo cuando quieras, también durante la partida.</p>
+            <div class="mt-3">${htmlModoMarcado()}</div>
+        </div>
+
+        <div class="carta mt-5 p-4">
             <h2 class="font-display text-xl">Jugadores <span class="font-ui text-base font-black text-tinta/60">(${jugadores.length})</span></h2>
             <ul class="mt-2 grid gap-1.5">${jugadores.map((j) => `
                 <li class="flex items-center gap-2 text-sm font-bold ${j.conectado ? '' : 'text-tinta/50'}">
@@ -470,6 +476,41 @@ function dibujarJuego() {
     actualizarReloj(intervalo);
 }
 
+// Selector «¿Cómo quieres marcar?»: se ofrece en el lobby y durante la partida
+function htmlModoMarcado() {
+    const opcion = (modo, titulo, detalle) => {
+        const activo = (modo === 'auto') === app.marcarSolo;
+        return `<button type="button" role="radio" aria-checked="${activo}" data-modo="${modo}"
+            class="opcion flex h-auto min-h-[3.25rem] flex-col items-center justify-center gap-0.5 px-2 py-2 text-center normal-case">
+            <span class="text-[13px] uppercase tracking-wide">${titulo}</span>
+            <span class="text-[11px] font-bold normal-case tracking-normal opacity-80">${detalle}</span>
+        </button>`;
+    };
+    return `<div class="rounded-2xl border-[3px] border-tinta bg-crema p-1.5 shadow-duro-sm">
+        <div role="radiogroup" aria-label="Cómo quieres marcar tus cartones" class="grid grid-cols-2 gap-1.5">
+            ${opcion('auto', 'Automático', 'se marcan solos')}
+            ${opcion('manual', 'Yo marco', 'toco cada número')}
+        </div>
+    </div>`;
+}
+
+function cambiarModoMarcado(automatico) {
+    if (app.marcarSolo === automatico) return;
+    app.marcarSolo = automatico;
+    guardarPreferencia('marcarSolo', app.marcarSolo);
+    // Al pasar a marcar a mano se parte de lo que ya estaba marcado
+    if (!app.marcarSolo && app.sala?.serie) {
+        const salidas = app.sala.bolas ?? [];
+        for (const n of misCartones(app.sala, app.miId)) {
+            if (!app.marcas.cartones[n]) app.marcas.cartones[n] = [...salidas];
+        }
+        guardarMarcas();
+    }
+    if (app.sala?.estado === 'lobby') dibujarLobby();
+    else dibujarCartones();
+    avisar(app.marcarSolo ? 'Marcado automático: tus cartones se marcan solos.' : 'Marcas tú: toca los números que vayan saliendo.');
+}
+
 function marcasDe(carton, salidas) {
     if (app.marcarSolo) return salidas;
     const mias = (app.marcas.cartones[carton] ?? []).filter((n) => salidas.has(n));
@@ -484,10 +525,10 @@ function dibujarCartones() {
     const premio = premioActual(sala);
     const modalidad = premio?.modalidad ?? 'lleno';
 
-    $('botonMarcarSolo').setAttribute('aria-checked', String(app.marcarSolo));
+    pintar($('modoMarcadoJuego'), htmlModoMarcado());
     $('ayudaMarcar').textContent = app.marcarSolo
-        ? 'Tus cartones se marcan solos con cada bola. Desactívalo si prefieres marcar tú.'
-        : 'Toca los números que ya salieron para marcarlos. El servidor comprueba igualmente tu ¡Bingo!';
+        ? 'Cada bola que sale se marca sola en tus cartones. Tú solo cantas ¡Bingo!'
+        : 'Toca los números que ya salieron para marcarlos. Aunque se te pase alguno, tu ¡Bingo! se comprueba con las bolas reales.';
 
     if (!sala.serie) {
         pintar($('cartones'), htmlCargando('Preparando los cartones…'));
@@ -937,18 +978,10 @@ $('cartones').addEventListener('keydown', (e) => {
     tocarCelda(Number(celda.closest('[data-carton]').dataset.carton), Number(celda.dataset.n));
 });
 
-$('botonMarcarSolo').addEventListener('click', () => {
-    app.marcarSolo = !app.marcarSolo;
-    guardarPreferencia('marcarSolo', app.marcarSolo);
-    // Al pasar a marcar a mano se parte de lo que ya estaba marcado
-    if (!app.marcarSolo && app.sala?.serie) {
-        const salidas = app.sala.bolas ?? [];
-        for (const n of misCartones(app.sala, app.miId)) {
-            if (!app.marcas.cartones[n]) app.marcas.cartones[n] = [...salidas];
-        }
-        guardarMarcas();
-    }
-    dibujarCartones();
+// Delegado: el selector se vuelve a pintar con cada instantánea (lobby y partida)
+$('vistaSala').addEventListener('click', (e) => {
+    const boton = e.target.closest('[data-modo]');
+    if (boton) cambiarModoMarcado(boton.dataset.modo === 'auto');
 });
 
 $('botonSonido').addEventListener('click', () => {
