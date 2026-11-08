@@ -74,3 +74,22 @@ test('nuevaSerie produce series válidas', () => {
     for (let i = 0; i < 200; i++) assert.ok(serieValida(nuevaSerie()));
     assert.equal(formatoCodigo('K7QX', 5), 'K7QX-005');
 });
+
+test('sha256 coincide con el de Node (FIPS 180-4)', async () => {
+    const { createHash } = await import('node:crypto');
+    const { sha256 } = await import('../src/carton.js');
+    const hex = (palabras) => Array.from(palabras, (p) => p.toString(16).padStart(8, '0')).join('');
+    for (const texto of ['', 'abc', 'bingoshow:carton:v2:K7QX:42', 'x'.repeat(55), 'y'.repeat(56), 'z'.repeat(64), 'ñandú '.repeat(40)]) {
+        const bytes = new TextEncoder().encode(texto);
+        assert.equal(hex(sha256(bytes)), createHash('sha256').update(bytes).digest('hex'), `texto de ${bytes.length} bytes`);
+    }
+});
+
+test('los números de cada columna se reparten de forma uniforme entre cartones', () => {
+    // En 3000 cartones, cada número de B (1–15) debería aparecer ~1000 veces (5 de 15)
+    const cuentas = new Array(15).fill(0);
+    for (let n = 1; n <= 3000; n++) generarCarton('UNIF', n).columnas[0].forEach((x) => cuentas[x - 1]++);
+    const esperado = (3000 * 5) / 15;
+    const chi = cuentas.reduce((s, c) => s + (c - esperado) ** 2 / esperado, 0);
+    assert.ok(chi < 50, `chi² = ${chi.toFixed(1)}`); // 14 g.l.
+});

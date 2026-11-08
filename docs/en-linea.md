@@ -88,7 +88,7 @@ servidor ignora todo lo demás. Mensajes de más de 4 KB o mal formados → `err
 
 | tipo | datos | quién |
 |---|---|---|
-| `hola` | `{ rol: 'jugador', apodo, token? }` o `{ rol: 'anfitrion', token }` | todos |
+| `hola` | `{ rol: 'jugador', apodo, token?, semilla? }` o `{ rol: 'anfitrion', token }` | todos |
 | `elegirCarton` | `{ numero }` | jugador |
 | `soltarCarton` | `{ numero }` | jugador |
 | `bingo` | `{ numero }` (uno de sus cartones) | jugador |
@@ -133,6 +133,12 @@ Apodo repetido en la sala → se le añade ` 2`, ` 3`, …
   jugadores: [ { id, apodo, fichas, cartones: [3, 17], conectado } ],
   ocupados: { '3': 'jugadorId', '17': 'jugadorId' },
   anfitrionConectado: true,
+  justo: {                               // partida verificable (ver sección «Partida verificable»)
+    compromiso: 'hex64',                 // SHA-256 de la semilla del servidor; existe desde el lobby
+    semillasClientes: [{ apodo, semilla }] | null, // fijadas al iniciar
+    semillaClientes: 'hex64' | null,     // combinarSemillas(semillasClientes), fijada al iniciar
+    semillaServidor: 'hex64' | null,     // solo se revela en `terminada`
+  },
 }
 ```
 
@@ -160,9 +166,90 @@ Se reconecta solo con espera creciente (0,5 s → 8 s). No guarda nada; cada vis
 
 ```bash
 npm run build          # compila dist/ (show, cartones, jugador, sala)
-npm run dev:worker     # wrangler dev en http://localhost:8787 (API + archivos estáticos)
+npm run dev:worker     # wrangler dev en http://localhost:8787 (otro puerto: npm run dev:worker -- --port 8790)
 npm test               # pruebas (cartones + lógica de la sala)
 ```
 
 El modo sin conexión de siempre (`index.html` sin `?sala=`) debe seguir funcionando igual, también
 abriéndolo con doble clic (`file://`).
+
+## Partida verificable («provably fair»)
+
+Todo el cálculo está en `src/justo.js` (compartido por servidor y clientes, con pruebas en
+`test/justo.test.mjs`). **No se usa `extraerBola`/`src/azar.js` en el servidor**: el orden sale de las semillas.
+
+1. **Lobby** (al crear la sala y en cada `nuevaPartida`): el servidor genera
+   `semillaServidor = nuevaSemilla()` (32 bytes del CSPRNG, secreta) y publica
+   `justo.compromiso = compromisoDe(semillaServidor)`.
+2. **Unirse**: el cliente del jugador genera `nuevaSemilla(16)` una vez por sala, la guarda en
+   `localStorage` (clave `bingoshow.semilla.CODIGO`) y la envía en `hola.semilla`. El servidor acepta solo
+   hex de 16–64 caracteres y conserva la **primera** que recibió de cada jugador (al reconectar no cambia).
+   Si un jugador no envía semilla, el servidor no inventa una: simplemente no participa en la combinación.
+3. **Iniciar**: `semillasClientes` = `{ apodo, semilla }` de los jugadores **con cartones** que tienen
+   semilla; `semillaClientes = combinarSemillas(semillasClientes)`; la serie de los cartones es
+   `serieDePartida(semillaServidor, semillaClientes)` (sustituye a `nuevaSerie()`); y la bola en la posición
+   `k` (0-based) es `ordenDeBolas(semillaServidor, semillaClientes, k + 1)[k]` (o calcula el orden una vez
+   y guárdalo en privado; nunca va en la instantánea hasta `terminada`).
+4. **Terminada**: se publica `justo.semillaServidor`. Cualquiera ejecuta
+   `verificarPartida({ compromiso, semillaServidor, semillasClientes, semillaClientes, serie, bolas })`
+   → `{ valida, errores }`.
+
+El registro de auditoría del servidor (número, orden y hora de cada bola) se sigue guardando.
+
+## Notas del servidor
+
+Decisiones del servidor (`worker/`) donde la especificación no lo fijaba:
+
+- **Código**: `worker/juego.js` (reglas puras, sin E/S; reloj y azar inyectables), `worker/sala.js`
+  (Durable Object: hibernación de WebSockets, storage, una sola alarma) y `worker/index.js` (rutas HTTP).
+- **Reparto del pozo entre premios**: `floor(pozo × porcentaje / 100)` para cada premio; lo que sobra por
+  redondeo va al **último** premio. Dentro de un premio, división entera entre cartones y el resto al
+  primero que cantó.
+- **Lobby**: `pozo` y `premios[].fichas` son una vista previa que se recalcula con cada venta.
+  `premioActual` es `null` en `lobby` y en `terminada`.
+- **¡Bingo!** se acepta en `jugando` y en `pausa` (también durante la pausa de 6 s tras un premio).
+  Un mismo cartón no puede cantar dos veces en la misma ventana; la ventana no se alarga con cada canto.
+  Un jugador puede ganar con varios cartones a la vez (cada cartón cuenta como un ganador).
+- **Pausa con la ventana abierta**: la ventana se cierra a su hora igualmente; si la sala sigue en pausa,
+  no se programa la siguiente bola hasta `reanudar`. Reanudar con la ventana abierta no adelanta nada.
+- **Bolas agotadas**: tras la bola 75 se espera un `intervalo` normal (para que se pueda cantar); si
+  nadie abrió ventana, se adjudican los premios pendientes en orden a todos los cartones vendidos que
+  los cumplen (con 75 bolas, todos), ordenados por número de cartón; el resto va al de número menor.
+  Se emite un `ganador` por premio.
+- **`velocidad`**: solo admite 4000/6000/8000/12000 (en modo prueba, cualquier entero 150–12000).
+  Si hay una bola programada, la cuenta atrás se reinicia con el nuevo intervalo.
+- **`nuevaPartida`** solo desde `lobby` o `terminada` (no se puede abortar una partida en juego).
+- **Apodos**: se quitan `<>`, se hace `trim` y se recortan a 20 caracteres; el duplicado se compara sin
+  distinguir mayúsculas (`Ana` y `ana` → `ana 2`).
+- **Expulsado**: su token se borra, así que si vuelve con él entra como jugador nuevo (con
+  `fichasIniciales` otra vez); `cliente.js` ya no reconecta tras `expulsado`.
+- **`hola` fallido** (token de anfitrión no válido, apodo vacío, sala llena, rol desconocido): se envía
+  `error` y el servidor cierra el socket (códigos 4003 / 4000). Un segundo `hola` en un socket ya
+  identificado → `error`.
+- **`ping`** se responde con `pong` incluso antes de `hola` (auto-respuesta de Cloudflare que no despierta
+  al Durable Object; requiere que el cliente envíe exactamente `{"tipo":"ping"}`, como hace `cliente.js`).
+- **Conectado**: un jugador está `conectado` si tiene al menos un socket abierto (puede abrir varias pestañas).
+- **Eventos y `estado`**: los eventos de una acción (`bola`, `ganador`, `aviso`, `bingoRechazado`…) se
+  envían primero y después la instantánea `estado` a todos los sockets identificados. Al que acaba de
+  hacer `hola` no se le repite el `estado` porque ya lo lleva en `bienvenida`.
+- **Mensajes**: más de 4096 caracteres, binarios o JSON sin `tipo` → `error`.
+- **Partida verificable**: el orden de las 75 bolas se calcula una vez al iniciar con `ordenDeBolas` y se
+  guarda en privado (storage), junto a `semillaServidor`. Una `semilla` de `hola` que no sea hex de 16–64
+  caracteres se ignora (no impide entrar). `generarCodigo` (código de sala) usa su propio muestreo por
+  rechazo sobre `crypto.getRandomValues`.
+- **Registro de auditoría**: `[{ numero, indice, en }]` por partida, **solo en storage** (no va en la
+  instantánea; las bolas y su orden ya son públicos en `bolas`). Se vacía al iniciar y en `nuevaPartida`.
+- **Salas guardadas con otra forma** (p. ej. creadas por una versión anterior del servidor y recargadas a
+  mitad de partida): al despertar, el Durable Object completa los campos que falten (`juego.sanear`). Si
+  la partida en curso no tiene `orden`, se recalcula con las semillas (`repararOrden`); si no se puede o
+  no cuadra con las bolas ya salidas, la partida pasa a `terminada` con un `aviso` (`interrumpir`: si aún
+  no se había entregado ningún premio, se devuelven las fichas de los cartones). Un error inesperado en la
+  alarma hace lo mismo, así que la alarma nunca queda reintentando en bucle ni los clientes esperando.
+- **Modo prueba** (`wrangler dev --var MODO_PRUEBA:1`): `intervalo` desde 150 ms, ventana de ¡Bingo! de
+  300 ms y pausa tras premio de 400 ms. Se fija al crear la sala.
+- **Archivos estáticos**: solo `index.html`, `jugar.html`, `sala.html`, `carton.html`, `dist/` y `fonts/`
+  (ver `.assetsignore`). Workers Static Assets redirige `/x.html` → `/x` (307) conservando la consulta.
+- **Pruebas de punta a punta**: `npm run test:e2e` (puerto 8787; otro con `PUERTO=8788 npm run test:e2e`).
+  Si en el puerto ya corre este Worker en modo prueba lo usa; si no hay nada, arranca
+  `wrangler dev --var MODO_PRUEBA:1` con estado temporal y lo cierra al terminar. Si `wrangler dev` recarga
+  a mitad de prueba (porque se editó un archivo del repo), los sockets se cortan y la prueba falla: repítela.

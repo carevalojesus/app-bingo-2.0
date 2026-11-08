@@ -9,6 +9,7 @@
     "build": "npm run build:js && npm run build:css",
     "dev": "npm run build:css -- --watch=always & esbuild app=src/main.js cartones=src/cartones.js jugador=src/jugador.js sala=src/sala.js --bundle --format=iife --target=es2020 --outdir=dist --watch=forever",
     "test": "node --test test/*.test.mjs",
+    "test:e2e": "node test/e2e-sala.mjs",
     "dev:worker": "wrangler dev",
     "deploy": "npm run build && wrangler deploy"
   },

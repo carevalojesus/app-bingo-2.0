@@ -31,11 +31,23 @@
                     <span id="enVivo" class="inline-flex items-center gap-1.5 rounded-full border-[2.5px] border-tinta bg-tomate px-2.5 py-0.5 font-ui text-[10px] font-black uppercase tracking-widest text-crema shadow-duro-sm sm:text-[11px]">
                         <span class="h-2 w-2 animate-pulse rounded-full bg-crema"></span>En vivo
                     </span>
+                    <span id="conexion" class="conexion hidden" data-estado="conectando" role="status" aria-live="polite">
+                        <span class="conexion-punto"></span><span id="conexionTexto">Conectando…</span>
+                    </span>
                     <span id="lema" class="hidden font-display text-sm text-crema/70 sm:inline">El show del sorteo</span>
                 </div>
             </div>
 
             <div id="stats" class="pointer-events-auto flex flex-col items-end gap-2 sm:flex-row sm:items-start">
+                <!-- Modo en línea: sala, premios y pozo -->
+                <div id="infoEnLinea" class="info-en-linea carta hidden px-3 py-2 sm:px-4" aria-live="polite">
+                    <div class="flex items-baseline justify-between gap-3 whitespace-nowrap">
+                        <p class="etiqueta text-tinta/60">Sala <span id="infoCodigo" class="font-display text-sm tracking-wider text-tinta">——</span></p>
+                        <p class="etiqueta text-tinta/60"><span id="infoJugadores" class="text-tinta">0</span></p>
+                    </div>
+                    <ol id="infoPremios" class="mt-1.5 flex flex-col gap-1"></ol>
+                    <p class="etiqueta mt-1.5 text-tinta/60">Pozo <span id="infoPozo" class="font-display text-sm text-tinta">0</span> fichas</p>
+                </div>
                 <div class="carta flex divide-x-[3px] divide-tinta overflow-hidden">
                     <div class="px-2 py-1 sm:px-4 sm:py-2">
                         <p class="etiqueta text-tinta/60">Bolas</p>
@@ -47,7 +59,11 @@
                     </div>
                 </div>
                 <div class="flex gap-2">
-                    <a href="carton.html" target="_blank" class="boton h-10 w-10 shrink-0 bg-crema sm:h-14 sm:w-14" aria-label="Imprimir cartones (se abre en otra pestaña)" title="Imprimir cartones">
+                    <a id="enLineaBtn" href="sala.html" class="boton h-10 shrink-0 bg-menta px-2.5 text-[11px] sm:h-14 sm:px-3 sm:text-xs" title="Crear una sala para jugar en línea con móviles">
+                        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>
+                        <span class="hidden sm:inline">En línea</span>
+                    </a>
+                    <a id="cartonesBtn" href="carton.html" target="_blank" class="boton h-10 w-10 shrink-0 bg-crema sm:h-14 sm:w-14" aria-label="Imprimir cartones (se abre en otra pestaña)" title="Imprimir cartones">
                         <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"/><path d="M3 9h18M9 9v12M15 9v12M3 15h18"/></svg>
                     </a>
                     <button id="sonidoBtn" class="boton h-10 w-10 shrink-0 bg-crema sm:h-14 sm:w-14" aria-pressed="true" aria-label="Sonido y voz activados" title="Sonido y voz">
@@ -129,6 +145,59 @@
         </div>
     </div>
 
+    <!-- Modo en línea: sala de espera (el escenario 3D sigue girando detrás) -->
+    <div id="lobby" class="lobby absolute inset-0 z-[25] hidden overflow-y-auto px-3 pb-6 pt-28 sm:px-6 sm:pt-36 lg:pb-6" aria-label="Sala de espera">
+        <div class="mx-auto grid max-w-md gap-4 lg:mx-0 lg:h-full lg:max-w-none lg:grid-cols-[minmax(0,440px)_1fr_392px] lg:gap-6">
+            <div class="flex min-h-0 flex-col gap-4">
+                <section class="carta pointer-events-auto p-4 sm:p-5">
+                    <p id="lobbyNombre" class="etiqueta text-tinta/60">Sala de bingo</p>
+                    <h2 class="mt-1 font-display text-xl leading-none sm:text-2xl">¡Únete con tu móvil!</h2>
+                    <div id="lobbyCodigo" class="mt-4 flex justify-between gap-1.5" aria-label="Código de sala"></div>
+                    <label for="lobbyEnlace" class="etiqueta mt-4 block text-tinta/60">Entra en</label>
+                    <div class="mt-1.5 flex gap-2">
+                        <input id="lobbyEnlace" readonly class="campo min-w-0 flex-1 text-sm" aria-label="Enlace para unirse">
+                        <button id="copiarBtn" type="button" class="boton h-12 shrink-0 bg-girasol px-3 text-xs">Copiar</button>
+                    </div>
+                </section>
+                <section class="carta pointer-events-auto p-4 sm:p-5">
+                    <div class="flex items-end justify-between gap-3">
+                        <div>
+                            <p class="etiqueta text-tinta/60">Pozo</p>
+                            <p class="font-display text-3xl leading-none sm:text-4xl"><span id="lobbyPozo">0</span> <span class="text-base text-tinta/50">fichas</span></p>
+                        </div>
+                        <div class="text-right">
+                            <p class="etiqueta text-tinta/60">Cartones</p>
+                            <p class="font-display text-xl leading-none"><span id="lobbyVendidos">0</span><span class="text-sm text-tinta/40">/<span id="lobbyTotal">0</span></span></p>
+                        </div>
+                    </div>
+                    <div class="mt-3 h-3.5 overflow-hidden rounded-full border-[2.5px] border-tinta bg-papel">
+                        <div id="lobbyBarra" class="h-full w-0 bg-menta transition-[width] duration-500"></div>
+                    </div>
+                    <p id="lobbyReglas" class="etiqueta mt-2 text-tinta/60"></p>
+                    <ol id="lobbyPremios" class="mt-3 grid gap-2"></ol>
+                </section>
+                <section id="lobbyJusto" class="carta pointer-events-auto hidden items-center gap-3 px-4 py-3">
+                    <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg border-[2.5px] border-tinta bg-menta font-display text-base" aria-hidden="true">✓</span>
+                    <p class="min-w-0 text-sm font-bold leading-snug text-tinta/70">Partida verificable: el orden de las bolas ya está comprometido
+                        <span class="mt-0.5 block font-ui text-xs font-black tracking-wider text-tinta">Compromiso <code id="lobbyCompromiso" class="rounded bg-papel px-1"></code>…</span></p>
+                </section>
+            </div>
+
+            <div class="flex flex-col items-center justify-end gap-3 lg:pb-2">
+                <button id="empezarBtn" type="button" class="boton pointer-events-auto h-16 bg-girasol px-10 font-display text-2xl normal-case sm:h-20 sm:text-3xl" disabled>¡Empezar!</button>
+                <p id="empezarAyuda" class="rounded-full bg-escenario/70 px-3 py-1 text-center font-ui text-sm font-bold text-crema/80">Esperando a que alguien compre un cartón</p>
+            </div>
+
+            <section class="carta pointer-events-auto flex min-h-0 flex-col p-4 sm:p-5" aria-labelledby="tituloJugadores">
+                <div class="flex items-baseline justify-between gap-3">
+                    <h2 id="tituloJugadores" class="font-display text-xl leading-none sm:text-2xl">Jugadores</h2>
+                    <p class="etiqueta text-tinta/60"><span id="lobbyConectados">0</span> conectados</p>
+                </div>
+                <ul id="lobbyJugadores" class="mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1"></ul>
+            </section>
+        </div>
+    </div>
+
     <!-- Fin del juego -->
     <div id="fin" class="absolute inset-0 z-20 hidden place-items-center lg:right-[424px]">
         <div id="finSello" class="carta bg-girasol px-6 py-4 text-center shadow-duro-lg">
@@ -153,6 +222,9 @@
     </h2>
     <div class="modal-caja carta relative w-full max-w-md p-5 shadow-duro-lg sm:p-6">
         <div id="sello" class="pointer-events-none absolute -right-2 -top-7 z-10 hidden rounded-xl border-4 px-4 py-1.5 font-display text-2xl shadow-duro sm:-right-6 sm:text-3xl"></div>
+        <!-- Modo en línea: ganadores verificados por el servidor -->
+        <div id="bingoEnLinea" class="hidden" aria-live="polite"></div>
+        <div id="bingoLocal">
         <p class="text-center font-ui font-bold text-tinta/70">
             Juego en pausa · <strong id="bingoBolas" class="text-tinta">0</strong> <span id="bingoBolasPalabra">bolas</span> en <strong id="bingoTiempo" class="text-tinta">00:00</strong>
         </p>
@@ -184,8 +256,9 @@
             <div id="resultadoCarton" class="flex justify-center"></div>
             <div id="resultadoChips" class="flex flex-wrap justify-center gap-2"></div>
         </div>
+        </div>
 
-        <div class="mt-6 grid grid-cols-2 gap-3">
+        <div id="bingoBotones" class="mt-6 grid grid-cols-2 gap-3">
             <button id="seguirBtn" class="boton h-12 bg-crema">Seguir</button>
             <button id="nuevaPartidaBtn" class="boton h-12 bg-tinta text-crema">Nueva partida</button>
         </div>
@@ -197,11 +270,28 @@
     <div class="modal-fondo absolute inset-0 bg-escenario/80" data-cerrar></div>
     <div class="modal-caja carta relative w-full max-w-sm p-6 text-center shadow-duro-lg">
         <h2 id="tituloReset" class="font-display text-2xl sm:text-3xl">¿Reiniciar?</h2>
-        <p class="mt-2 font-ui font-bold text-tinta/70">Las bolas vuelven al bombo y el tiempo empieza de cero.</p>
+        <p id="textoReset" class="mt-2 font-ui font-bold text-tinta/70">Las bolas vuelven al bombo y el tiempo empieza de cero.</p>
         <div class="mt-6 grid grid-cols-2 gap-3">
             <button class="boton h-12 bg-crema" data-cerrar>Cancelar</button>
             <button id="confirmarResetBtn" class="boton h-12 bg-tomate text-crema">Reiniciar</button>
         </div>
+    </div>
+</div>
+
+<!-- Modo en línea: ventana de ¡Bingo! abierta mientras el servidor verifica -->
+<div id="ventanaBingo" class="pointer-events-none fixed left-1/2 top-1/3 z-[35] hidden -translate-x-1/2 lg:left-[calc((100%-424px)/2)]" role="status" aria-live="assertive">
+    <div class="ventana-bingo carta flex items-center gap-3 bg-tomate px-5 py-3 text-crema shadow-duro-lg">
+        <span class="font-display text-2xl sm:text-4xl">¡Bingo cantado!</span>
+        <span class="etiqueta">Verificando…</span>
+    </div>
+</div>
+
+<!-- Modo en línea: aviso cuando la sala no se puede abrir como anfitrión -->
+<div id="salaAviso" class="fixed inset-0 z-[58] hidden place-items-center bg-escenario/85 p-4" role="dialog" aria-modal="true" aria-labelledby="salaAvisoTitulo">
+    <div class="carta w-full max-w-md p-6 text-center shadow-duro-lg">
+        <h2 id="salaAvisoTitulo" class="font-display text-2xl sm:text-3xl"></h2>
+        <p id="salaAvisoTexto" class="mt-2 font-ui font-bold text-tinta/70"></p>
+        <div id="salaAvisoAcciones" class="mt-6 grid gap-3"></div>
     </div>
 </div>
 

@@ -48,6 +48,18 @@
       placeholder:font-medium placeholder:text-tinta/35 focus:outline-none focus:ring-4 focus:ring-girasol;
   }
 
+  /* Select con flecha propia (la nativa queda diminuta y pegada al borde) */
+  select.campo {
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: 2.75rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2314112b' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.85rem center;
+    background-size: 1.15rem;
+    cursor: pointer;
+  }
+
   /* Opción de un grupo (modalidad de juego) */
   .opcion {
     @apply h-10 rounded-lg border-[2.5px] border-tinta bg-crema px-1 font-ui text-[11px] font-black uppercase tracking-wide
@@ -277,3 +289,75 @@
 @media (prefers-reduced-motion: reduce) {
   .casilla.ultima::after { animation: none; }
 }
+
+/* === Anfitrión en línea === */
+/* Indicador de conexión junto a «En vivo» */
+.conexion {
+  @apply inline-flex items-center gap-1.5 rounded-full border-[2.5px] border-tinta bg-girasol px-2.5 py-0.5 font-ui text-[10px] font-black uppercase tracking-widest text-tinta shadow-duro-sm sm:text-[11px];
+}
+.conexion.hidden { display: none; }
+.conexion-punto {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: currentColor;
+}
+.conexion[data-estado='conectado'] { background: #19c3a0; }
+.conexion[data-estado='reconectando'] { background: #ff5a36; color: #fff3df; }
+.conexion[data-estado='reconectando'] .conexion-punto,
+.conexion[data-estado='conectando'] .conexion-punto { animation: latido 0.9s ease-in-out infinite; }
+.conexion[data-estado='cerrado'] { background: #f3dfb8; color: rgba(20, 17, 43, 0.6); }
+
+/* Mientras llega la primera instantánea no se enseñan los controles del modo sin conexión */
+body.sala-cargando #controles,
+body.sala-cargando #actual { visibility: hidden; }
+body.sala-cargando #infoEnLinea { display: none; }
+
+/* Sala de espera: la pizarra y los controles del sorteo se esconden */
+body.sala-lobby #controles,
+body.sala-lobby #actual { visibility: hidden; }
+body.sala-lobby #infoEnLinea { display: none; }
+
+/* La tarjeta de premios ocupa el sitio del lema en pantallas medianas */
+@media (max-width: 1535px) {
+  body.en-linea:not(.sala-lobby) #lema { display: none; }
+}
+body.sala-lobby #pizarra,
+body.sala-lobby #pizarraFondo { display: none; }
+
+/* Código de sala gigante, en fichas como el logo */
+.lobby-letra {
+  @apply grid aspect-square flex-1 place-items-center rounded-xl border-[3px] border-tinta font-display text-3xl text-tinta shadow-duro sm:text-5xl;
+  max-width: 4.5rem;
+  transform: rotate(var(--r, 0deg));
+}
+
+/* Tarjeta de premios durante la partida */
+.info-en-linea { min-width: 15rem; max-width: 20rem; }
+.premio-fila {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  column-gap: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  border: 2px solid transparent;
+  border-radius: 0.6rem;
+}
+.premio-fila.activo { background: #ffc43d; border-color: #14112b; box-shadow: 2px 2px 0 #14112b; }
+.premio-fila.ganado { opacity: 0.75; }
+.premio-en-juego { animation: latido 1.2s ease-in-out infinite; }
+
+/* Cartones de los ganadores en el modal */
+.ganadores-cartones .carton { --celda: 2.1rem; }
+.ganadores-cartones.varios .carton { --celda: 1.45rem; }
+
+/* «¡Bingo cantado!» mientras el servidor verifica */
+.ventana-bingo { animation: ventana-pulso 0.8s ease-in-out infinite; }
+@keyframes ventana-pulso {
+  50% { box-shadow: 12px 12px 0 0 #14112b; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conexion-punto, .premio-en-juego, .ventana-bingo { animation: none !important; }
+}
+/* === Fin anfitrión en línea === */

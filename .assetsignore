@@ -1,0 +1,18 @@
+# Solo se publican: index.html, jugar.html, sala.html, carton.html, dist/ y fonts/
+.*
+node_modules
+worker
+src
+test
+docs
+css
+js
+icons
+appBingo.html
+README.md
+package.json
+package-lock.json
+prepros.config
+tailwind.config.cjs
+wrangler.toml
+wrangler.jsonc
