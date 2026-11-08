@@ -43,6 +43,18 @@
       focus-visible:outline focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-girasol;
   }
 
+  .campo {
+    @apply h-12 rounded-xl border-[3px] border-tinta bg-white px-3 font-ui font-bold text-tinta
+      placeholder:font-medium placeholder:text-tinta/35 focus:outline-none focus:ring-4 focus:ring-girasol;
+  }
+
+  /* Opción de un grupo (modalidad de juego) */
+  .opcion {
+    @apply h-10 rounded-lg border-[2.5px] border-tinta bg-crema px-1 font-ui text-[11px] font-black uppercase tracking-wide
+      transition-colors aria-checked:bg-tinta aria-checked:text-crema
+      focus-visible:outline focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-girasol;
+  }
+
   .etiqueta {
     @apply font-ui text-[10px] font-black uppercase tracking-[0.18em] sm:text-[11px];
   }
@@ -83,6 +95,110 @@
   border-radius: 9999px;
   background: #fff;
   border: 2px solid #14112b;
+}
+
+/* Cartón de bingo: todo se escala con --celda (mm al imprimir, rem en el modal) */
+.carton {
+  --celda: 2.4rem;
+  display: inline-flex;
+  flex-direction: column;
+  gap: calc(var(--celda) * 0.12);
+  padding: calc(var(--celda) * 0.18);
+  background: #fff3df;
+  border: calc(var(--celda) * 0.06) solid #14112b;
+  border-radius: calc(var(--celda) * 0.28);
+  box-shadow: calc(var(--celda) * 0.1) calc(var(--celda) * 0.1) 0 #14112b;
+  color: #14112b;
+  break-inside: avoid;
+}
+.carton-fila {
+  display: grid;
+  grid-template-columns: repeat(5, var(--celda));
+  gap: calc(var(--celda) * 0.08);
+}
+.carton-letra {
+  display: grid;
+  place-items: center;
+  height: calc(var(--celda) * 0.8);
+  border: calc(var(--celda) * 0.05) solid #14112b;
+  border-radius: calc(var(--celda) * 0.16);
+  background: var(--c);
+  font-family: 'Bungee', Impact, sans-serif;
+  font-size: calc(var(--celda) * 0.5);
+  line-height: 1;
+}
+.carton-celda {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: var(--celda);
+  border: calc(var(--celda) * 0.05) solid #14112b;
+  border-radius: calc(var(--celda) * 0.16);
+  background: #fff;
+  font-family: 'Bungee', Impact, sans-serif;
+  font-size: calc(var(--celda) * 0.42);
+  line-height: 1;
+}
+.carton-libre {
+  background: #ffc43d;
+  font-size: calc(var(--celda) * 0.17);
+  text-align: center;
+}
+.carton-libre span { display: block; font-size: calc(var(--celda) * 0.42); }
+.carton-pie {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0 calc(var(--celda) * 0.04);
+  font-family: 'Archivo', sans-serif;
+  font-weight: 900;
+  font-size: calc(var(--celda) * 0.2);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.carton-codigo {
+  font-family: 'Bungee', Impact, sans-serif;
+  font-size: calc(var(--celda) * 0.3);
+  letter-spacing: 0.04em;
+}
+/* Estados al verificar en el show */
+.carton-celda.marcada { background: var(--c); }
+.carton-celda.apagada { color: rgba(20, 17, 43, 0.35); }
+.carton-celda.clave { box-shadow: 0 0 0 calc(var(--celda) * 0.07) #14112b; z-index: 1; }
+.carton-celda.falta {
+  background: #fff;
+  color: #ff5a36;
+  outline: calc(var(--celda) * 0.06) dashed #ff5a36;
+  outline-offset: calc(var(--celda) * -0.14);
+}
+
+/* Hojas para imprimir: el área útil (190 × 255 mm) cabe en A4 y en Carta */
+.hoja {
+  box-sizing: content-box;
+  display: grid;
+  align-content: space-evenly;
+  justify-content: center;
+  gap: 6mm;
+  width: 190mm;
+  height: 255mm;
+  padding: 10mm;
+  margin: 0 auto 8mm;
+  background: #fff;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+}
+.hoja-1 .carton { --celda: 30mm; }
+.hoja-2 .carton { --celda: 17mm; }
+.hoja-4 { grid-template-columns: repeat(2, auto); column-gap: 8mm; }
+.hoja-4 .carton { --celda: 15mm; }
+
+@media print {
+  @page { margin: 10mm; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  html, body { background: #fff !important; height: auto !important; overflow: visible !important; }
+  .no-imprimir { display: none !important; }
+  .hojas { padding: 0 !important; overflow: visible !important; }
+  .hoja { padding: 0; margin: 0; box-shadow: none; break-after: page; }
+  .hoja:last-child { break-after: auto; }
 }
 
 /* Pizarra: casillas que giran al cantarse */

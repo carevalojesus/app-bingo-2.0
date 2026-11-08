@@ -3,6 +3,8 @@ import { gsap } from 'gsap';
 import { crearEscenario } from './escenario.js';
 import { anunciarBola, celebrarBingo, detenerCelebracion, estampar, confeti, sacudirUI } from './anuncio.js';
 import * as sfx from './efectos.js';
+import { generarCarton, verificar, parsearCodigo, PATRONES, normalizarSerie, serieValida } from './carton.js';
+import { htmlCarton } from './carton-html.js';
 
 const LETRAS = [
     { letra: 'B', color: '#ff5a36' },
@@ -42,6 +44,7 @@ const estado = {
     terminado: false,
     intervalo: VELOCIDADES.includes(leerPreferencia('intervalo', 8000)) ? leerPreferencia('intervalo', 8000) : 8000,
     sonido: leerPreferencia('sonido', true),
+    patron: PATRONES[leerPreferencia('patron', 'linea')] ? leerPreferencia('patron', 'linea') : 'linea',
     tiempoAcumulado: 0,
     inicioTramo: 0,
 };
@@ -327,7 +330,7 @@ function abrirModal(modal) {
             { scale: 0.4, rotation: -10, opacity: 0 },
             { scale: 1, rotation: 0, opacity: 1, duration: 0.55, ease: 'elastic.out(1, 0.6)' });
     }
-    modal.querySelector('textarea, button:not([data-cerrar])')?.focus({ preventScroll: true });
+    (modal.querySelector('[data-autofoco]') ?? modal.querySelector('button:not([data-cerrar])'))?.focus({ preventScroll: true });
 }
 
 function cerrarModal() {
@@ -350,7 +353,7 @@ document.querySelectorAll('[data-cerrar]').forEach((b) => b.addEventListener('cl
 
 document.addEventListener('keydown', (e) => {
     if (!modalAbierto || e.key !== 'Tab') return;
-    const enfocables = [...modalAbierto.querySelectorAll('button, textarea')].filter((x) => x.offsetParent);
+    const enfocables = [...modalAbierto.querySelectorAll('button, textarea, input, summary')].filter((x) => x.offsetParent);
     const primero = enfocables[0];
     const ultimo = enfocables[enfocables.length - 1];
     if (e.shiftKey && document.activeElement === primero) { e.preventDefault(); ultimo.focus(); }
@@ -367,9 +370,14 @@ function bingo() {
     pausar();
     $('bingoBolas').textContent = estado.salidas.size;
     $('bingoTiempo').textContent = formatoTiempo(tiempoTranscurrido());
+    $('codigoCarton').value = '';
     $('numerosCarton').value = '';
+    $('aMano').open = false;
     $('resultado').classList.add('hidden');
     $('sello').classList.add('hidden');
+    ultimaVerificacion = null;
+    aplicarPatron();
+    pintarSerie();
     abrirModal($('modalBingo'));
     celebrarBingo({ colores: COLORES, reducirMovimiento });
     escenario.celebrar();
@@ -379,22 +387,87 @@ function bingo() {
     }
 }
 
-function verificarCarton() {
+// Repite la última verificación al cambiar de modalidad
+let ultimaVerificacion = null;
+
+function serieRecordada() {
+    const serie = normalizarSerie(leerPreferencia('serie', ''));
+    return serieValida(serie) ? serie : null;
+}
+function pintarSerie() {
+    $('serieActual').textContent = serieRecordada() ?? '—';
+}
+
+function aplicarPatron() {
+    document.querySelectorAll('#patrones [data-patron]').forEach((b) => {
+        b.setAttribute('aria-checked', String(b.dataset.patron === estado.patron));
+    });
+}
+
+function limpiarResultado() {
+    $('resultado').classList.remove('hidden');
+    $('resultadoCarton').innerHTML = '';
+    $('resultadoChips').innerHTML = '';
+}
+
+function mostrarAviso(texto) {
+    $('resultadoTexto').textContent = texto;
+    $('resultadoTexto').className = 'mb-3 text-center font-ui font-black text-tinta/60';
+    $('sello').classList.add('hidden');
+}
+
+// Mensaje, sello y sonido del veredicto
+function veredicto(valido, texto) {
+    const resultadoTexto = $('resultadoTexto');
+    resultadoTexto.textContent = texto;
+    resultadoTexto.className = `mb-3 text-center font-ui font-black ${valido ? 'text-tinta' : 'text-tomate'}`;
+    if (valido) {
+        estampar($('sello'), { texto: '¡Válido!', fondo: '#19c3a0' }, reducirMovimiento);
+        gsap.delayedCall(0.4, () => {
+            confeti(COLORES, { cantidad: reducirMovimiento ? 0 : 70 });
+            if (estado.sonido) sfx.golpe(0.8);
+        });
+    } else {
+        estampar($('sello'), { texto: 'No vale', fondo: '#ff5a36', color: '#fff3df' }, reducirMovimiento);
+        gsap.delayedCall(0.4, () => estado.sonido && sfx.golpe(0.6));
+    }
+}
+
+const listaNumeros = (numeros) => numeros.map((n) => columnaDe(n).letra + n).join(', ');
+const textoFaltan = (faltan) => `${faltan.length === 1 ? 'falta 1 número' : `faltan ${faltan.length} números`}: ${listaNumeros(faltan)}`;
+
+// Verificación por código: el cartón se reconstruye a partir de la serie
+function verificarCodigo() {
+    ultimaVerificacion = verificarCodigo;
+    limpiarResultado();
+    const codigo = parsearCodigo($('codigoCarton').value, serieRecordada());
+    if (codigo.error) return mostrarAviso(codigo.error);
+
+    guardarPreferencia('serie', codigo.serie);
+    pintarSerie();
+    const carton = generarCarton(codigo.serie, codigo.numero);
+    const r = verificar(carton, estado.salidas, estado.patron);
+    const { nombre } = PATRONES[estado.patron];
+
+    $('resultadoCarton').innerHTML = htmlCarton(carton, { marcadas: r.marcadas, clave: r.figura, faltan: r.faltan });
+    gsap.from('#resultadoCarton .carton-celda', {
+        scale: 0, duration: 0.35, ease: 'back.out(2.5)', stagger: { amount: 0.35, grid: [5, 5], from: 'center' },
+    });
+    const texto = r.gana
+        ? `Cartón ${carton.codigo}: ¡${nombre}!`
+        : `Cartón ${carton.codigo}: para ${nombre.toLowerCase()} le ${textoFaltan(r.faltan)}`;
+    veredicto(r.gana, texto);
+}
+
+// Verificación a mano: comprueba que los números escritos ya salieron
+function verificarNumeros() {
+    ultimaVerificacion = null;
+    limpiarResultado();
     const texto = $('numerosCarton').value;
     const numeros = [...new Set((texto.match(/\d+/g) || []).map(Number))].filter((n) => n >= 1 && n <= TOTAL);
-    const resultadoTexto = $('resultadoTexto');
+    if (numeros.length === 0) return mostrarAviso('Escribe números del 1 al 75.');
+
     const chips = $('resultadoChips');
-    $('resultado').classList.remove('hidden');
-    chips.innerHTML = '';
-
-    if (numeros.length === 0) {
-        resultadoTexto.textContent = 'Escribe números del 1 al 75.';
-        resultadoTexto.className = 'mb-3 text-center font-ui font-black text-tinta/60';
-        $('sello').classList.add('hidden');
-        return;
-    }
-
-    const faltan = numeros.filter((n) => !estado.salidas.has(n));
     numeros.forEach((n) => {
         const salio = estado.salidas.has(n);
         const chip = document.createElement('span');
@@ -406,19 +479,11 @@ function verificarCarton() {
     });
     gsap.from(chips.children, { scale: 0, rotation: -180, duration: 0.5, stagger: 0.05, ease: 'back.out(2.5)' });
 
-    if (faltan.length === 0) {
-        resultadoTexto.textContent = `Los ${numeros.length} números ya salieron.`;
-        resultadoTexto.className = 'mb-3 text-center font-ui font-black text-tinta';
-        estampar($('sello'), { texto: '¡Válido!', fondo: '#19c3a0' }, reducirMovimiento);
-        gsap.delayedCall(0.4, () => {
-            confeti(COLORES, { cantidad: reducirMovimiento ? 0 : 70 });
-            if (estado.sonido) sfx.golpe(0.8);
-        });
-    } else {
-        resultadoTexto.textContent = `${faltan.length === 1 ? 'Falta 1 número' : `Faltan ${faltan.length} números`}: ${faltan.map((n) => columnaDe(n).letra + n).join(', ')}`;
-        resultadoTexto.className = 'mb-3 text-center font-ui font-black text-tomate';
-        estampar($('sello'), { texto: 'No vale', fondo: '#ff5a36', color: '#fff3df' }, reducirMovimiento);
-        gsap.delayedCall(0.4, () => estado.sonido && sfx.golpe(0.6));
+    const faltan = numeros.filter((n) => !estado.salidas.has(n));
+    if (faltan.length === 0) veredicto(true, `Los ${numeros.length} números ya salieron.`);
+    else {
+        const t = textoFaltan(faltan);
+        veredicto(false, t[0].toUpperCase() + t.slice(1));
     }
 }
 
@@ -462,9 +527,21 @@ function aplicarVelocidad() {
 $('playBtn').addEventListener('click', alternarJuego);
 $('resetBtn').addEventListener('click', pedirReinicio);
 $('bingoBtn').addEventListener('click', bingo);
-$('verificarBtn').addEventListener('click', verificarCarton);
+$('verificarBtn').addEventListener('click', verificarCodigo);
+$('codigoCarton').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); verificarCodigo(); }
+});
+$('verificarNumerosBtn').addEventListener('click', verificarNumeros);
 $('numerosCarton').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); verificarCarton(); }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); verificarNumeros(); }
+});
+$('patrones').addEventListener('click', (e) => {
+    const boton = e.target.closest('[data-patron]');
+    if (!boton || boton.dataset.patron === estado.patron) return;
+    estado.patron = boton.dataset.patron;
+    guardarPreferencia('patron', estado.patron);
+    aplicarPatron();
+    if (ultimaVerificacion && $('codigoCarton').value.trim()) ultimaVerificacion();
 });
 $('seguirBtn').addEventListener('click', () => { cerrarModal(); iniciar(); });
 $('nuevaPartidaBtn').addEventListener('click', () => { cerrarModal(); reiniciar(); });
