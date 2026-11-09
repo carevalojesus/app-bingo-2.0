@@ -99,9 +99,15 @@ export function ordenDeBolas(semillaServidor, semillaClientes, cuantas = 75) {
     return orden;
 }
 
+// Bola dorada de la partida (si la sala la usa): sale de las mismas semillas, así que también se verifica
+export function bolaDoradaDe(semillaServidor, semillaClientes) {
+    return flujo(semillaServidor, `bingoshow:dorada:v1:${semillaClientes}`)(75) + 1;
+}
+
 // Comprueba una partida terminada con los datos publicados.
+// `dorada` es opcional: si la partida tuvo bola dorada se comprueba también.
 // Devuelve { valida, errores: [texto…] }
-export function verificarPartida({ compromiso, semillaServidor, semillasClientes, semillaClientes, serie, bolas }) {
+export function verificarPartida({ compromiso, semillaServidor, semillasClientes, semillaClientes, serie, bolas, dorada = null }) {
     const errores = [];
     try {
         if (compromisoDe(semillaServidor) !== compromiso) errores.push('La semilla revelada no coincide con el compromiso publicado al principio.');
@@ -111,6 +117,7 @@ export function verificarPartida({ compromiso, semillaServidor, semillasClientes
         const orden = ordenDeBolas(semillaServidor, combinada);
         const distinta = bolas.findIndex((n, i) => n !== orden[i]);
         if (distinta !== -1) errores.push(`La bola nº ${distinta + 1} (${bolas[distinta]}) no es la que tocaba (${orden[distinta]}).`);
+        if (dorada !== null && bolaDoradaDe(semillaServidor, combinada) !== dorada) errores.push('La bola dorada no sale de las semillas.');
     } catch (error) {
         errores.push(`Datos no válidos: ${error.message}`);
     }

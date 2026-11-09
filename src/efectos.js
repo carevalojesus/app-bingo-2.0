@@ -141,11 +141,14 @@ export function fanfarria() {
     });
 }
 
-export function cantar(texto) {
+// `texto` puede ser un texto o { texto, lang } (ver src/narrador.js)
+export function cantar(texto, lang = 'es-ES') {
     if (!('speechSynthesis' in window)) return;
+    if (texto && typeof texto === 'object') ({ texto, lang = 'es-ES' } = texto);
+    if (!texto) return;
     window.speechSynthesis.cancel();
     const voz = new SpeechSynthesisUtterance(texto);
-    voz.lang = 'es-ES';
+    voz.lang = lang;
     voz.rate = 0.95;
     voz.pitch = 1.05;
     window.speechSynthesis.speak(voz);

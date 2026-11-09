@@ -19,13 +19,15 @@ function enviar(ws, mensaje) {
 
 // Cada acción recibe (sala, mensaje, sesión, ahora); los permisos se comprueban antes
 const ACCIONES = {
-    elegirCarton: (sala, m, s) => juego.elegirCarton(sala, s.jugadorId, m.numero),
+    elegirCarton: (sala, m, s) => juego.elegirCarton(sala, s.jugadorId, m.numero, m.numeros),
+    repetir: (sala, m, s) => juego.fijarRepetir(sala, s.jugadorId, m.valor),
+    detenerCuenta: (sala) => juego.detenerCuenta(sala),
     soltarCarton: (sala, m, s) => juego.soltarCarton(sala, s.jugadorId, m.numero),
     bingo: (sala, m, s, ahora) => juego.cantarBingo(sala, s.jugadorId, m.numero, ahora),
     iniciar: (sala, m, s, ahora) => juego.iniciar(sala, ahora),
     pausar: (sala) => juego.pausar(sala),
     reanudar: (sala, m, s, ahora) => juego.reanudar(sala, ahora),
-    nuevaPartida: (sala) => juego.nuevaPartida(sala),
+    nuevaPartida: (sala, m, s, ahora) => juego.nuevaPartida(sala, juego.AZAR, { ahora, repetir: sala.config.rondasSeguidas }),
     velocidad: (sala, m, s, ahora) => juego.cambiarVelocidad(sala, m.intervalo, ahora),
 };
 
@@ -122,6 +124,7 @@ export class Sala extends DurableObject {
             return enviar(ws, { tipo: 'error', mensaje: error.message });
         }
         if (tipo === 'expulsar') return this.expulsar(ws, mensaje.jugadorId);
+        if (tipo === 'reaccion') return this.reaccion(ws, mensaje, sesion);
         const ahora = Date.now();
         return this.ejecutar(ws, () => ACCIONES[tipo](this.sala, mensaje, sesion, ahora));
     }
@@ -194,6 +197,17 @@ export class Sala extends DurableObject {
         }
         await this.guardar();
         this.difundir(eventos);
+    }
+
+    // Reacción rápida: se reenvía a todos sin guardar nada. Como mucho una cada 800 ms por conexión.
+    reaccion(ws, mensaje, sesion) {
+        if (!juego.REACCIONES.includes(mensaje.emoji)) return enviar(ws, { tipo: 'error', mensaje: 'Reacción no válida.' });
+        const ahora = Date.now();
+        if (ahora - (sesion.ultimaReaccion ?? 0) < 800) return;
+        ws.serializeAttachment({ ...sesion, ultimaReaccion: ahora });
+        const apodo = this.sala.jugadores.find((j) => j.id === sesion.jugadorId)?.apodo ?? '?';
+        const mensajeReaccion = { tipo: 'reaccion', emoji: mensaje.emoji, apodo };
+        for (const socket of this.identificados()) enviar(socket, mensajeReaccion);
     }
 
     async expulsar(ws, jugadorId) {

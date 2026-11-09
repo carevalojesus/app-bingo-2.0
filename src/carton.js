@@ -163,11 +163,19 @@ const indices = [0, 1, 2, 3, 4];
 const filas = indices.map((f) => indices.map((c) => [c, f]));
 const columnas = indices.map((c) => indices.map((f) => [c, f]));
 const diagonales = [indices.map((i) => [i, i]), indices.map((i) => [i, 4 - i])];
+// Une varias listas de casillas [c, f] sin repetir
+const unir = (...listas) => [...new Map(listas.flat().map((p) => [p.join(','), p])).values()];
+const interior = [1, 2, 3].flatMap((c) => [1, 2, 3].map((f) => [c, f]));
 
 export const PATRONES = {
     linea: { nombre: 'Línea', detalle: 'fila, columna o diagonal', figuras: [...filas, ...columnas, ...diagonales] },
     esquinas: { nombre: '4 esquinas', detalle: 'las cuatro esquinas', figuras: [[[0, 0], [4, 0], [0, 4], [4, 4]]] },
     lleno: { nombre: 'Cartón lleno', detalle: 'los 24 números', figuras: [filas.flat()] },
+    letraL: { nombre: 'Letra L', detalle: 'columna B y fila de abajo', figuras: [unir(columnas[0], filas[4])] },
+    letraT: { nombre: 'Letra T', detalle: 'fila de arriba y columna N', figuras: [unir(filas[0], columnas[2])] },
+    letraX: { nombre: 'Letra X', detalle: 'las dos diagonales', figuras: [unir(...diagonales)] },
+    marco: { nombre: 'Marco', detalle: 'todo el borde del cartón', figuras: [unir(filas[0], filas[4], columnas[0], columnas[4])] },
+    cuadro: { nombre: 'Cuadro central', detalle: 'los 8 números alrededor del centro', figuras: [interior] },
 };
 
 // Comprueba el cartón contra las bolas que ya salieron.

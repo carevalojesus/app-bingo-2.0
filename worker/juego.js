@@ -6,7 +6,10 @@
 // Protocolo: docs/en-linea.md
 
 import { generarCarton, verificar, PATRONES } from '../src/carton.js';
-import { nuevaSemilla, compromisoDe, combinarSemillas, serieDePartida, ordenDeBolas } from '../src/justo.js';
+import {
+    TOTAL_FILAS, MODALIDAD_FILA, MODALIDAD_ELIGE, esModoFila, esModoElige, esModoAuto, filaCompleta, limpiarJugada,
+} from '../src/filas.js';
+import { nuevaSemilla, compromisoDe, combinarSemillas, serieDePartida, ordenDeBolas, bolaDoradaDe } from '../src/justo.js';
 
 export const ALFABETO_CODIGO = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 export const LARGO_CODIGO = 6;
@@ -15,11 +18,18 @@ export const TOTAL_BOLAS = 75;
 export const INTERVALOS = [4000, 6000, 8000, 12000];
 
 const TIEMPOS = {
-    normal: { ventana: 4000, pausaPremio: 6000 },
-    prueba: { ventana: 300, pausaPremio: 400 },
+    // finRonda: de «terminada» a la siguiente ronda; lobbyAuto: cuenta atrás del lobby en rondas seguidas
+    normal: { ventana: 4000, pausaPremio: 6000, finRonda: 12000, lobbyAuto: 30000 },
+    prueba: { ventana: 300, pausaPremio: 400, finRonda: 500, lobbyAuto: 600 },
 };
 
+// Reacciones rápidas que un jugador puede lanzar al show
+export const REACCIONES = ['😱', '🔥', '👏', '😂', '🙏', '🍀'];
+
+export const TIPOS = ['carton', 'fila', 'elige'];
+
 export const CONFIG_POR_DEFECTO = {
+    tipo: 'carton',
     nombre: '',
     cartones: 60,
     precioCarton: 10,
@@ -31,6 +41,10 @@ export const CONFIG_POR_DEFECTO = {
         { modalidad: 'lleno', porcentaje: 70 },
     ],
     pozoExtra: 0,
+    rondasSeguidas: false,  // al terminar, nueva ronda sola y cuenta atrás para empezar
+    bolaDorada: false,      // si sale antes de que haya ganador, el premio en juego se duplica
+    botePorcentaje: 0,      // % de las ventas que va al bote acumulado (0 = sin bote)
+    boteBolas: 0,           // el bote se lo lleva quien gane el último premio en estas bolas o menos
 };
 
 export class ErrorJuego extends Error {}
@@ -50,6 +64,7 @@ export const AZAR = {
     semilla: () => nuevaSemilla(),
     serie: serieDePartida,
     orden: (semillaServidor, semillaClientes) => ordenDeBolas(semillaServidor, semillaClientes),
+    dorada: bolaDoradaDe,
 };
 
 // Código de sala con muestreo por rechazo (sin sesgo de módulo)
@@ -71,6 +86,11 @@ export const codigoValido = (codigo) =>
 // ---------- Configuración ----------
 const limpiarTexto = (texto) => String(texto ?? '').replace(/[<>]/g, '').trim();
 
+function leerBooleano(valor, etiqueta) {
+    if (typeof valor !== 'boolean') fallar(`${etiqueta} debe ser sí o no.`);
+    return valor;
+}
+
 function leerEntero(valor, min, max, etiqueta) {
     const n = typeof valor === 'string' && valor.trim() !== '' ? Number(valor) : valor;
     if (!Number.isInteger(n) || n < min || n > max) fallar(`${etiqueta} debe ser un número entero entre ${min} y ${max}.`);
@@ -90,17 +110,33 @@ export function validarConfig(entrada = {}, { prueba = false } = {}) {
     const nombre = limpiarTexto(valor('nombre'));
     if (nombre.length > 40) fallar('El nombre puede tener como máximo 40 caracteres.');
 
+    const tipo = valor('tipo');
+    if (!TIPOS.includes(tipo)) fallar('El tipo de juego no es válido.');
+    const fila = tipo === 'fila';
+    const elige = tipo === 'elige';
+
     const config = {
+        tipo,
         nombre,
-        cartones: leerEntero(valor('cartones'), 10, 300, 'El número de cartones'),
+        // En «Fila de 5» el tablero es fijo: 15 filas. En «Elige tus 5», `cartones` es el máximo de jugadas.
+        cartones: fila ? TOTAL_FILAS : leerEntero(valor('cartones'), 10, 300, elige ? 'El máximo de jugadas' : 'El número de cartones'),
         precioCarton: leerEntero(valor('precioCarton'), 0, 1000, 'El precio del cartón'),
         maxCartonesPorJugador: leerEntero(valor('maxCartonesPorJugador'), 1, 12, 'El máximo de cartones por jugador'),
         fichasIniciales: leerEntero(valor('fichasIniciales'), 0, 100000, 'Las fichas iniciales'),
         intervalo: leerEntero(valor('intervalo'), 0, 60000, 'El intervalo'),
         premios: null,
         pozoExtra: leerEntero(valor('pozoExtra'), 0, 100000, 'El pozo extra'),
+        rondasSeguidas: leerBooleano(valor('rondasSeguidas'), 'Las rondas seguidas'),
+        bolaDorada: leerBooleano(valor('bolaDorada'), 'La bola dorada'),
+        botePorcentaje: leerEntero(valor('botePorcentaje'), 0, 50, 'El porcentaje para el bote'),
+        boteBolas: 0,
     };
+    if (config.botePorcentaje > 0) config.boteBolas = leerEntero(valor('boteBolas'), 5, 75, 'Las bolas para ganar el bote');
     if (!intervaloValido(config.intervalo, prueba)) fallar(`El intervalo debe ser ${INTERVALOS.join(', ')} ms.`);
+    if (fila || elige) {
+        config.premios = [{ modalidad: fila ? MODALIDAD_FILA : MODALIDAD_ELIGE, porcentaje: 100 }];
+        return config;
+    }
 
     const premios = valor('premios');
     if (!Array.isArray(premios) || premios.length < 1 || premios.length > 3) fallar('Debe haber entre 1 y 3 premios.');
@@ -138,6 +174,15 @@ export function crearSala(codigo, entrada, { prueba = false, azar = AZAR } = {})
         jugadores: [],
         ocupados: {},
         anfitrionConectado: false,
+        ronda: 1,
+        bote: 0,               // bote acumulado entre rondas
+        aporteRonda: 0,        // lo que esta ronda aporta al bote (se suma al iniciar)
+        jugadas: {},           // «Elige tus 5»: { [id]: [5 números] }
+        siguienteJugada: 1,
+        dorada: null,          // bola dorada (privada hasta que sale o termina la partida)
+        doradaSalio: false,
+        siguienteRondaEn: null,
+        inicioAutoEn: null,
     };
     recalcularPozo(sala);
     nuevoCompromiso(sala, azar);
@@ -158,6 +203,13 @@ const buscarJugador = (sala, id) => sala.jugadores.find((j) => j.id === id);
 const jugadorOFallar = (sala, id) => buscarJugador(sala, id) ?? fallar('No estás en esta sala.');
 const vendidos = (sala) => Object.keys(sala.ocupados).length;
 
+// ¿Gana este cartón (o fila) la modalidad con estas bolas?
+function gana(sala, numero, salidas, modalidad) {
+    if (esModoFila(sala.config)) return filaCompleta(numero, salidas);
+    if (esModoElige(sala.config)) return (sala.jugadas[numero] ?? []).every((n) => salidas.has(n)) && Boolean(sala.jugadas[numero]);
+    return verificar(generarCarton(sala.serie, numero), salidas, modalidad).gana;
+}
+
 // Reparte el pozo por porcentaje (división entera); lo que sobra va al último premio
 function repartirPozo(pozo, premios) {
     const fichas = premios.map((p) => Math.floor((pozo * p.porcentaje) / 100));
@@ -167,7 +219,9 @@ function repartirPozo(pozo, premios) {
 
 // En el lobby el pozo y los premios son una vista previa que cambia con cada venta
 function recalcularPozo(sala) {
-    sala.pozo = vendidos(sala) * sala.config.precioCarton + sala.config.pozoExtra;
+    const ventas = vendidos(sala) * sala.config.precioCarton;
+    sala.aporteRonda = Math.floor((ventas * (sala.config.botePorcentaje || 0)) / 100);
+    sala.pozo = ventas - sala.aporteRonda + sala.config.pozoExtra;
     const fichas = repartirPozo(sala.pozo, sala.config.premios);
     sala.premios = sala.config.premios.map((p, i) => ({ modalidad: p.modalidad, porcentaje: p.porcentaje, fichas: fichas[i], ganadores: [] }));
 }
@@ -204,6 +258,9 @@ export function unirJugador(sala, { apodo, token, semilla } = {}, azar = AZAR) {
         cartones: [],
         conectado: false,
         semilla: semillaValida(semilla) ? semilla : null,
+        ganado: 0,       // fichas ganadas en todas las rondas (ranking de la noche)
+        repetir: true,   // en rondas seguidas, volver a comprar lo mismo
+        ultimos: null,   // lo que jugó en la última ronda
     };
     sala.jugadores.push(jugador);
     return { jugador, nuevo: true };
@@ -222,24 +279,51 @@ export function marcarConexiones(sala, idsConectados, anfitrionConectado) {
 }
 
 function numeroCarton(sala, numero) {
+    if (esModoElige(sala.config)) {
+        if (!Number.isInteger(numero) || !sala.jugadas[numero]) fallar('Esa jugada no existe.');
+        return numero;
+    }
     if (!Number.isInteger(numero) || numero < 1 || numero > sala.config.cartones) {
-        fallar(`El cartón debe ser un número del 1 al ${sala.config.cartones}.`);
+        fallar(`${esModoFila(sala.config) ? 'La fila' : 'El cartón'} debe ser un número del 1 al ${sala.config.cartones}.`);
     }
     return numero;
 }
 
-export function elegirCarton(sala, jugadorId, numero) {
+// «ese cartón» / «esa fila» para los mensajes
+const palabras = (sala) => (esModoFila(sala.config) ? ['esa fila', 'filas']
+    : esModoElige(sala.config) ? ['esa jugada', 'jugadas'] : ['ese cartón', 'cartones']);
+const mayus = (texto) => texto[0].toUpperCase() + texto.slice(1);
+const tuyo = (sala) => (esModoAuto(sala.config) ? 'tuya' : 'tuyo');
+
+// En «Elige tus 5» `numero` se ignora: se manda `numeros` y el servidor le pone número a la jugada
+export function elegirCarton(sala, jugadorId, numero, numeros) {
     const jugador = jugadorOFallar(sala, jugadorId);
-    if (sala.estado !== 'lobby') fallar('Solo se pueden elegir cartones antes de empezar.');
-    numeroCarton(sala, numero);
-    const dueno = sala.ocupados[numero];
-    if (dueno === jugadorId) fallar('Ese cartón ya es tuyo.');
-    if (dueno) fallar('Ese cartón ya tiene dueño.');
+    const [uno, varios] = palabras(sala);
+    if (sala.estado !== 'lobby') fallar(`Solo se pueden elegir ${varios} antes de empezar.`);
+    let jugada = null;
+    if (esModoElige(sala.config)) {
+        try {
+            jugada = limpiarJugada(numeros);
+        } catch (error) {
+            fallar(error.message);
+        }
+        if (vendidos(sala) >= sala.config.cartones) fallar('Ya no quedan jugadas a la venta en esta ronda.');
+        numero = sala.siguienteJugada;
+    } else {
+        numeroCarton(sala, numero);
+        const dueno = sala.ocupados[numero];
+        if (dueno === jugadorId) fallar(`${mayus(uno)} ya es ${tuyo(sala)}.`);
+        if (dueno) fallar(`${mayus(uno)} ya tiene dueño.`);
+    }
     if (jugador.cartones.length >= sala.config.maxCartonesPorJugador) {
-        fallar(`Puedes tener como máximo ${sala.config.maxCartonesPorJugador} cartones.`);
+        fallar(`Puedes tener como máximo ${sala.config.maxCartonesPorJugador} ${varios}.`);
     }
     if (jugador.fichas < sala.config.precioCarton) fallar('No tienes fichas suficientes.');
 
+    if (jugada) {
+        sala.jugadas[numero] = jugada;
+        sala.siguienteJugada += 1;
+    }
     jugador.fichas -= sala.config.precioCarton;
     jugador.cartones.push(numero);
     jugador.cartones.sort((a, b) => a - b);
@@ -250,21 +334,34 @@ export function elegirCarton(sala, jugadorId, numero) {
 
 export function soltarCarton(sala, jugadorId, numero) {
     const jugador = jugadorOFallar(sala, jugadorId);
-    if (sala.estado !== 'lobby') fallar('Solo se pueden soltar cartones antes de empezar.');
+    const [uno, varios] = palabras(sala);
+    if (sala.estado !== 'lobby') fallar(`Solo se pueden soltar ${varios} antes de empezar.`);
     numeroCarton(sala, numero);
-    if (sala.ocupados[numero] !== jugadorId) fallar('Ese cartón no es tuyo.');
+    if (sala.ocupados[numero] !== jugadorId) fallar(`${mayus(uno)} no es ${tuyo(sala)}.`);
 
     jugador.fichas += sala.config.precioCarton;
     jugador.cartones = jugador.cartones.filter((n) => n !== numero);
     delete sala.ocupados[numero];
+    delete sala.jugadas[numero];
     recalcularPozo(sala);
+    return [];
+}
+
+// Rondas seguidas: el jugador decide si se le vuelve a comprar lo mismo en la siguiente ronda
+export function fijarRepetir(sala, jugadorId, valor) {
+    const jugador = jugadorOFallar(sala, jugadorId);
+    if (typeof valor !== 'boolean') fallar('Valor no válido.');
+    jugador.repetir = valor;
     return [];
 }
 
 export function expulsar(sala, jugadorId) {
     if (sala.estado !== 'lobby') fallar('Solo se puede expulsar en el lobby.');
     const jugador = buscarJugador(sala, jugadorId) ?? fallar('Ese jugador no está en la sala.');
-    for (const numero of jugador.cartones) delete sala.ocupados[numero];
+    for (const numero of jugador.cartones) {
+        delete sala.ocupados[numero];
+        delete sala.jugadas[numero];
+    }
     jugador.fichas += jugador.cartones.length * sala.config.precioCarton;
     jugador.cartones = [];
     sala.jugadores = sala.jugadores.filter((j) => j !== jugador);
@@ -275,7 +372,7 @@ export function expulsar(sala, jugadorId) {
 // ---------- Partida ----------
 export function iniciar(sala, ahora, azar = AZAR) {
     if (sala.estado !== 'lobby') fallar('La partida ya empezó.');
-    if (vendidos(sala) === 0) fallar('Hace falta al menos un cartón vendido para empezar.');
+    if (vendidos(sala) === 0) fallar(`Hace falta al menos ${esModoFila(sala.config) ? 'una fila vendida' : 'un cartón vendido'} para empezar.`);
 
     recalcularPozo(sala);
     const semillasClientes = sala.jugadores
@@ -285,6 +382,16 @@ export function iniciar(sala, ahora, azar = AZAR) {
     sala.justo = { ...sala.justo, semillasClientes, semillaClientes };
     sala.serie = azar.serie(sala.semillaServidor, semillaClientes);
     sala.orden = azar.orden(sala.semillaServidor, semillaClientes);
+    sala.dorada = sala.config.bolaDorada ? (azar.dorada ?? AZAR.dorada)(sala.semillaServidor, semillaClientes) : null;
+    sala.doradaSalio = false;
+    sala.inicioAutoEn = null;
+    sala.bote += sala.aporteRonda;
+    // Lo jugado en esta ronda, para repetirlo en la siguiente
+    for (const jugador of sala.jugadores) {
+        jugador.ultimos = jugador.cartones.length
+            ? jugador.cartones.map((n) => (esModoElige(sala.config) ? [...sala.jugadas[n]] : n))
+            : null;
+    }
     sala.bolas = [];
     sala.registro = [];
     sala.ventana = [];
@@ -302,7 +409,38 @@ export function sacarBola(sala, ahora) {
     sala.bolas.push(numero);
     sala.registro.push({ numero, indice: sala.bolas.length - 1, en: ahora });
     sala.siguienteBolaEn = ahora + sala.config.intervalo;
-    return [{ tipo: 'bola', numero, indice: sala.bolas.length - 1 }];
+    const eventos = [{ tipo: 'bola', numero, indice: sala.bolas.length - 1 }];
+    if (numero === sala.dorada && sala.premioActual !== null && !sala.doradaSalio) {
+        // Bola dorada antes de que haya ganador: el premio en juego se duplica (lo pone la casa)
+        const premio = sala.premios[sala.premioActual];
+        sala.doradaSalio = true;
+        premio.fichas *= 2;
+        premio.doble = true;
+        eventos.push({ tipo: 'dorada', numero, modalidad: premio.modalidad, fichas: premio.fichas });
+    } else if (numero === sala.dorada) {
+        sala.doradaSalio = true;
+    }
+    if (esModoAuto(sala.config)) eventos.push(...comprobarAutomaticos(sala, ahora));
+    return eventos;
+}
+
+// «Fila de 5» y «Elige tus 5»: nadie canta. Si con esta bola se completa alguna fila o jugada
+// vendida, el servidor abre la ventana (unos segundos de suspense en el show) y al cerrarla entrega
+// el premio (repartido si hay varias).
+function comprobarAutomaticos(sala, ahora) {
+    if (sala.premioActual === null || sala.ventanaHasta !== null) return [];
+    const salidas = new Set(sala.bolas);
+    const completas = Object.entries(sala.ocupados)
+        .map(([fila, jugadorId]) => ({ jugadorId, carton: Number(fila) }))
+        .filter((c) => gana(sala, c.carton, salidas))
+        .sort((a, b) => a.carton - b.carton);
+    if (!completas.length) return [];
+    sala.ventana = completas;
+    sala.ventanaHasta = ahora + tiempos(sala).ventana;
+    sala.siguienteBolaEn = null;
+    const unidad = esModoFila(sala.config) ? 'fila' : 'jugada';
+    const nombres = completas.map((c) => `${buscarJugador(sala, c.jugadorId)?.apodo ?? '?'} (${unidad} ${c.carton})`).join(', ');
+    return [{ tipo: 'aviso', texto: `¡${unidad === 'fila' ? 'Fila' : 'Jugada'} completa! ${nombres}` }];
 }
 
 const ganadorPublico = (sala, { jugadorId, carton }, fichas) =>
@@ -314,18 +452,32 @@ function adjudicar(sala, cantos) {
     const parte = Math.floor(premio.fichas / cantos.length);
     const resto = premio.fichas - parte * cantos.length;
     premio.ganadores = cantos.map((canto, i) => ganadorPublico(sala, canto, parte + (i === 0 ? resto : 0)));
+    const siguiente = sala.premios[sala.premioActual + 1] ?? null;
+
+    // Bote: se lo lleva quien gane el último premio dentro de las bolas fijadas
+    let bote = 0;
+    if (!siguiente && sala.bote > 0 && sala.config.botePorcentaje > 0 && sala.bolas.length <= sala.config.boteBolas) {
+        bote = sala.bote;
+        const parteBote = Math.floor(bote / cantos.length);
+        premio.ganadores.forEach((g, i) => { g.bote = parteBote + (i === 0 ? bote - parteBote * cantos.length : 0); });
+        premio.bote = bote;
+        sala.bote = 0;
+    }
     for (const ganador of premio.ganadores) {
         const jugador = buscarJugador(sala, ganador.jugadorId);
-        if (jugador) jugador.fichas += ganador.fichas;
+        if (!jugador) continue;
+        jugador.fichas += ganador.fichas + (ganador.bote ?? 0);
+        jugador.ganado = (jugador.ganado ?? 0) + ganador.fichas + (ganador.bote ?? 0);
     }
 
-    const siguiente = sala.premios[sala.premioActual + 1] ?? null;
     sala.premioActual = siguiente ? sala.premioActual + 1 : null;
-    return { tipo: 'ganador', modalidad: premio.modalidad, ganadores: premio.ganadores, siguiente: siguiente?.modalidad ?? null };
+    return { tipo: 'ganador', modalidad: premio.modalidad, ganadores: premio.ganadores, siguiente: siguiente?.modalidad ?? null, bote };
 }
 
-function terminar(sala) {
+// Con `ahora` y rondas seguidas, programa la siguiente ronda
+function terminar(sala, ahora = null) {
     sala.estado = 'terminada';
+    sala.siguienteRondaEn = sala.config.rondasSeguidas && ahora !== null ? ahora + tiempos(sala).finRonda : null;
     sala.premioActual = null;
     sala.siguienteBolaEn = null;
     sala.ventanaHasta = null;
@@ -336,6 +488,7 @@ export function cantarBingo(sala, jugadorId, numero, ahora) {
     const jugador = jugadorOFallar(sala, jugadorId);
     if (sala.estado !== 'jugando' && sala.estado !== 'pausa') fallar('No hay ninguna partida en juego.');
     if (sala.premioActual === null) fallar('No quedan premios en juego.');
+    if (esModoAuto(sala.config)) fallar(`En «${esModoFila(sala.config) ? 'Fila de 5' : 'Elige tus 5'}» no hace falta cantar: el premio se entrega solo.`);
     numeroCarton(sala, numero);
     if (sala.ocupados[numero] !== jugadorId) fallar('Ese cartón no es tuyo.');
     if (sala.ventana.some((c) => c.carton === numero)) fallar('Ese cartón ya cantó ¡Bingo!');
@@ -362,13 +515,13 @@ export function cerrarVentana(sala, ahora) {
     const evento = adjudicar(sala, sala.ventana);
     sala.ventana = [];
     sala.ventanaHasta = null;
-    if (sala.premioActual === null) terminar(sala);
+    if (sala.premioActual === null) terminar(sala, ahora);
     else sala.siguienteBolaEn = sala.estado === 'jugando' ? ahora + tiempos(sala).pausaPremio : null;
     return [evento];
 }
 
 // Sin bolas y con premios pendientes: se revisan todos los cartones vendidos
-export function adjudicarAgotadas(sala) {
+export function adjudicarAgotadas(sala, ahora = null) {
     const salidas = new Set(sala.bolas);
     const cartones = Object.entries(sala.ocupados)
         .map(([carton, jugadorId]) => ({ jugadorId, carton: Number(carton) }))
@@ -376,11 +529,11 @@ export function adjudicarAgotadas(sala) {
     const eventos = [];
     while (sala.premioActual !== null) {
         const { modalidad } = sala.premios[sala.premioActual];
-        const ganadores = cartones.filter((c) => verificar(generarCarton(sala.serie, c.carton), salidas, modalidad).gana);
+        const ganadores = cartones.filter((c) => gana(sala, c.carton, salidas, modalidad));
         if (ganadores.length) eventos.push(adjudicar(sala, ganadores));
         else sala.premioActual = sala.premios[sala.premioActual + 1] ? sala.premioActual + 1 : null;
     }
-    terminar(sala);
+    terminar(sala, ahora);
     return eventos;
 }
 
@@ -388,14 +541,26 @@ export function adjudicarAgotadas(sala) {
 export function proximoEvento(sala) {
     if (sala.ventanaHasta !== null) return sala.ventanaHasta;
     if (sala.estado === 'jugando' && sala.siguienteBolaEn !== null) return sala.siguienteBolaEn;
+    if (sala.estado === 'terminada' && sala.siguienteRondaEn != null) return sala.siguienteRondaEn;
+    if (sala.estado === 'lobby' && sala.inicioAutoEn != null) return sala.inicioAutoEn;
     return null;
 }
 
 // Ejecuta el evento pendiente si ya le toca. Devuelve sus eventos o null si no había nada.
 export function avanzar(sala, ahora) {
     if (sala.ventanaHasta !== null) return ahora >= sala.ventanaHasta ? cerrarVentana(sala, ahora) : null;
+    if (sala.estado === 'terminada') {
+        if (sala.siguienteRondaEn == null || ahora < sala.siguienteRondaEn) return null;
+        return nuevaPartida(sala, AZAR, { ahora, repetir: true });
+    }
+    if (sala.estado === 'lobby') {
+        if (sala.inicioAutoEn == null || ahora < sala.inicioAutoEn) return null;
+        sala.inicioAutoEn = null;
+        if (vendidos(sala) === 0) return [{ tipo: 'aviso', texto: 'Nadie eligió todavía: el anfitrión empezará la ronda cuando haya jugadores.' }];
+        return iniciar(sala, ahora);
+    }
     if (sala.estado !== 'jugando' || sala.siguienteBolaEn === null || ahora < sala.siguienteBolaEn) return null;
-    if (sala.bolas.length >= TOTAL_BOLAS) return adjudicarAgotadas(sala);
+    if (sala.bolas.length >= TOTAL_BOLAS) return adjudicarAgotadas(sala, ahora);
     if (!repararOrden(sala)) return interrumpir(sala, 'No se pudo recuperar el orden de las bolas.');
     return sacarBola(sala, ahora);
 }
@@ -434,6 +599,7 @@ export function interrumpir(sala, motivo = '') {
     const ninguno = !sala.premios.some((p) => p.ganadores?.length);
     if (ninguno) {
         for (const jugador of sala.jugadores) jugador.fichas += jugador.cartones.length * sala.config.precioCarton;
+        sala.bote = Math.max(0, (sala.bote ?? 0) - (sala.aporteRonda ?? 0));
     }
     terminar(sala);
     const texto = `La partida se interrumpió por un error del servidor${motivo ? ` (${motivo})` : ''}.`
@@ -445,6 +611,15 @@ export function interrumpir(sala, motivo = '') {
 // curso se puede seguir. Devuelve los eventos a difundir (vacío si estaba bien).
 export function sanear(sala) {
     sala.config ??= structuredClone(CONFIG_POR_DEFECTO);
+    if (!TIPOS.includes(sala.config.tipo)) sala.config.tipo = 'carton';
+    for (const [clave, valor] of Object.entries(CONFIG_POR_DEFECTO)) sala.config[clave] ??= structuredClone(valor);
+    sala.ronda ??= 1;
+    sala.bote ??= 0;
+    sala.aporteRonda ??= 0;
+    sala.siguienteJugada ??= 1;
+    sala.doradaSalio ??= false;
+    if (!sala.jugadas || typeof sala.jugadas !== 'object') sala.jugadas = {};
+    for (const clave of ['dorada', 'siguienteRondaEn', 'inicioAutoEn']) sala[clave] ??= null;
     for (const clave of ['bolas', 'registro', 'ventana', 'premios', 'jugadores']) {
         if (!Array.isArray(sala[clave])) sala[clave] = [];
     }
@@ -485,14 +660,23 @@ export function cambiarVelocidad(sala, intervalo, ahora) {
     return [];
 }
 
-export function nuevaPartida(sala, azar = AZAR) {
+// Con `repetir`, a quien lo tenga activado se le vuelve a comprar lo de la ronda anterior.
+// Con rondas seguidas y `ahora`, arranca la cuenta atrás del lobby.
+export function nuevaPartida(sala, azar = AZAR, { ahora = null, repetir = false } = {}) {
     if (sala.estado !== 'lobby' && sala.estado !== 'terminada') fallar('Termina la partida antes de empezar otra.');
     const devolver = sala.estado === 'lobby';
+    if (!devolver) sala.ronda = (sala.ronda ?? 1) + 1;
     for (const jugador of sala.jugadores) {
         if (devolver) jugador.fichas += jugador.cartones.length * sala.config.precioCarton;
         jugador.cartones = [];
     }
     sala.ocupados = {};
+    sala.jugadas = {};
+    sala.siguienteJugada = 1;
+    sala.dorada = null;
+    sala.doradaSalio = false;
+    sala.siguienteRondaEn = null;
+    sala.inicioAutoEn = null;
     sala.estado = 'lobby';
     sala.serie = null;
     sala.bolas = [];
@@ -503,7 +687,32 @@ export function nuevaPartida(sala, azar = AZAR) {
     sala.premioActual = null;
     recalcularPozo(sala);
     nuevoCompromiso(sala, azar);
-    return [{ tipo: 'aviso', texto: 'Nueva partida: elige tus cartones.' }];
+
+    let repetidos = 0;
+    if (repetir && !devolver) {
+        for (const jugador of sala.jugadores) {
+            if (!jugador.repetir || !Array.isArray(jugador.ultimos)) continue;
+            for (const ultimo of jugador.ultimos) {
+                try {
+                    if (esModoElige(sala.config)) elegirCarton(sala, jugador.id, null, ultimo);
+                    else elegirCarton(sala, jugador.id, ultimo);
+                    repetidos += 1;
+                } catch (error) {
+                    if (!(error instanceof ErrorJuego)) throw error; // sin fichas o ya ocupado: se salta
+                }
+            }
+        }
+    }
+    if (sala.config.rondasSeguidas && ahora !== null) sala.inicioAutoEn = ahora + tiempos(sala).lobbyAuto;
+    const [, varios] = palabras(sala);
+    return [{ tipo: 'aviso', texto: `Ronda ${sala.ronda}: elige tus ${varios}.${repetidos ? ' Se repitieron las jugadas de la ronda anterior.' : ''}` }];
+}
+
+// Rondas seguidas: el anfitrión puede parar la cuenta atrás del lobby y empezar cuando quiera
+export function detenerCuenta(sala) {
+    if (sala.estado !== 'lobby') fallar('Solo en la sala de espera.');
+    sala.inicioAutoEn = null;
+    return [];
 }
 
 // ---------- Permisos ----------
@@ -511,6 +720,9 @@ export const ROL_DE_ACCION = {
     elegirCarton: 'jugador',
     soltarCarton: 'jugador',
     bingo: 'jugador',
+    repetir: 'jugador',
+    reaccion: 'jugador',
+    detenerCuenta: 'anfitrion',
     iniciar: 'anfitrion',
     pausar: 'anfitrion',
     reanudar: 'anfitrion',
@@ -539,9 +751,19 @@ export function instantanea(sala) {
         pozo: sala.pozo,
         premios: sala.premios.map((p) => ({ ...p, ganadores: p.ganadores.map((g) => ({ ...g })) })),
         premioActual: sala.premioActual,
-        jugadores: sala.jugadores.map(({ id, apodo, fichas, cartones, conectado }) => ({ id, apodo, fichas, cartones: [...cartones], conectado })),
+        jugadores: sala.jugadores.map(({ id, apodo, fichas, cartones, conectado, ganado = 0, repetir = true }) =>
+            ({ id, apodo, fichas, cartones: [...cartones], conectado, ganado, repetir })),
         ocupados: { ...sala.ocupados },
         anfitrionConectado: sala.anfitrionConectado,
+        ronda: sala.ronda,
+        bote: sala.bote,
+        aporteRonda: sala.aporteRonda,
+        jugadas: structuredClone(sala.jugadas ?? {}),
+        // La bola dorada es secreta hasta que sale (o hasta el final)
+        dorada: sala.doradaSalio || sala.estado === 'terminada' ? sala.dorada : null,
+        doradaSalio: sala.doradaSalio,
+        siguienteRondaEn: sala.siguienteRondaEn,
+        inicioAutoEn: sala.inicioAutoEn,
         justo: {
             compromiso: sala.justo.compromiso,
             semillasClientes: sala.justo.semillasClientes?.map((s) => ({ ...s })) ?? null,

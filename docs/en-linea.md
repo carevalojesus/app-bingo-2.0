@@ -26,6 +26,7 @@ Partidas en línea sobre **Cloudflare Workers + Durable Objects**. Decisiones to
 
 ```js
 {
+  tipo: 'carton',                      // 'carton' (bingo clásico) | 'fila' («Fila de 5») | 'elige' («Elige tus 5»)
   nombre: 'Bingo de los viernes',      // opcional, 0–40 caracteres
   cartones: 60,                        // cartones a la venta, numerados 1..cartones (10–300)
   precioCarton: 10,                    // fichas por cartón (0–1000)
@@ -37,10 +38,38 @@ Partidas en línea sobre **Cloudflare Workers + Durable Objects**. Decisiones to
     { modalidad: 'lleno', porcentaje: 70 },
   ],
   pozoExtra: 0,                        // fichas que pone el anfitrión además de las ventas (0–100000)
+  rondasSeguidas: false,               // al terminar: nueva ronda a los 12 s y arranque solo a los 30 s
+  bolaDorada: false,                   // si sale antes del ganador, el premio en juego se duplica
+  botePorcentaje: 0,                   // % de las ventas que va al bote acumulado (0–50)
+  boteBolas: 35,                       // (5–75) el bote es de quien gane el último premio en ≤ estas bolas
 }
 ```
 
-`modalidad` ∈ `PATRONES` de `src/carton.js` (`linea`, `esquinas`, `lleno`). Entre 1 y 3 premios, sin modalidades repetidas.
+`modalidad` ∈ `PATRONES` de `src/carton.js` (`linea`, `esquinas`, `lleno`, `letraL`, `letraT`, `letraX`, `marco`, `cuadro`). Entre 1 y 3 premios, sin modalidades repetidas.
+
+**Modo «Fila de 5»** (`tipo: 'fila'`, `src/filas.js`): el servidor ignora `cartones` y `premios` y fija
+15 filas y un único premio `{ modalidad: 'fila5', porcentaje: 100 }`. La fila *n* son los números
+n, n+15, n+30, n+45 y n+60 (uno por letra); entre las 15 cubren las 75 bolas sin repetir, así que con
+cada bola se completa como mucho una. Los mensajes `elegirCarton`/`soltarCarton` usan el número de fila.
+Nadie canta: tras cada bola el servidor comprueba las filas vendidas y, si una se completa, abre la
+ventana y la adjudica al cerrarla. El mensaje `bingo` se rechaza en este modo.
+
+**Modo «Elige tus 5»** (`tipo: 'elige'`): cada jugada son 5 números que elige el jugador con
+`{ tipo: 'elegirCarton', numeros: [5 enteros 1–75 distintos] }`; el servidor le pone número (1, 2, 3…)
+y la publica en `estado.jugadas`. `cartones` es el máximo de jugadas de la sala. Las jugadas pueden
+repetirse entre jugadores: si varias se completan con la misma bola, el premio se reparte.
+
+**Extras** (cualquier tipo):
+- *Rondas seguidas*: al terminar, `siguienteRondaEn` programa la nueva ronda; a quien tenga `repetir`
+  (mensaje `{ tipo: 'repetir', valor }`) se le vuelve a comprar lo de la ronda anterior. En el lobby,
+  `inicioAutoEn` arranca la ronda sola si hay ventas; el anfitrión puede pararla con `detenerCuenta`.
+- *Bote*: al iniciar, `aporteRonda` (% de las ventas) pasa a `bote`. Si el último premio se gana en
+  `boteBolas` bolas o menos, el evento `ganador` lleva `bote` y cada ganador su parte en `g.bote`.
+- *Bola dorada*: `bolaDoradaDe(semillas)` en `src/justo.js` (verificable). Es secreta hasta que sale
+  (evento `{ tipo: 'dorada', numero, fichas }`) o hasta el final.
+- *Reacciones*: `{ tipo: 'reaccion', emoji }` (uno de `REACCIONES`, máx. 1 cada 800 ms); se reenvía a todos
+  como `{ tipo: 'reaccion', emoji, apodo }` sin guardarse.
+- *Ranking*: cada jugador lleva `ganado` (fichas ganadas en todas las rondas de la sala).
 
 **Estados de la sala**: `lobby` → `jugando` ⇄ `pausa` → `terminada` → (nueva partida) `lobby`.
 

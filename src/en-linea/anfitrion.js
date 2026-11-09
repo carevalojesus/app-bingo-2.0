@@ -7,6 +7,8 @@ import { gsap } from 'gsap';
 import { conectarSala, consultarSala, CLAVES, normalizarCodigo } from './cliente.js';
 import { PATRONES, generarCarton, verificar } from '../carton.js';
 import { htmlCarton } from '../carton-html.js';
+import { MODALIDAD_FILA, INFO_FILA, MODALIDAD_ELIGE, INFO_ELIGE, esModoFila, esModoElige, esModoAuto, numerosDeFila } from '../filas.js';
+import qrcode from 'qrcode-generator';
 import * as sfx from '../efectos.js';
 import { verificarPartida } from '../justo.js';
 
@@ -20,7 +22,24 @@ const TEXTO_CONEXION = {
 };
 
 const escapar = (texto) => String(texto ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-const nombrePremio = (modalidad) => PATRONES[modalidad]?.nombre ?? modalidad;
+const nombrePremio = (modalidad) => (modalidad === MODALIDAD_FILA ? INFO_FILA.nombre
+    : modalidad === MODALIDAD_ELIGE ? INFO_ELIGE.nombre : PATRONES[modalidad]?.nombre ?? modalidad);
+const segundosHasta = (t) => Math.max(0, Math.ceil((t - Date.now()) / 1000));
+
+// QR (SVG) del enlace para unirse
+function svgQr(texto) {
+    const qr = qrcode(0, 'M');
+    qr.addData(texto);
+    qr.make();
+    return qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+}
+const COLORES_LETRA = ['#ff5a36', '#ffc43d', '#19c3a0', '#3d6bff', '#ff4fa3'];
+// Palabras según el tipo de juego
+const palabras = (e) => (esModoElige(e?.config)
+    ? { uno: 'jugada', varios: 'jugadas', Uno: 'Jugada', Varios: 'Jugadas', vendido: 'jugada vendida', vendidos: 'jugadas vendidas', sin: 'Sin jugadas', alguien: 'Esperando a que alguien arme una jugada' }
+    : esModoFila(e?.config)
+    ? { uno: 'fila', varios: 'filas', Uno: 'Fila', Varios: 'Filas', vendido: 'fila vendida', vendidos: 'filas vendidas', sin: 'Sin filas', alguien: 'Esperando a que alguien elija una fila' }
+    : { uno: 'cartón', varios: 'cartones', Uno: 'Cartón', Varios: 'Cartones', vendido: 'cartón vendido', vendidos: 'cartones vendidos', sin: 'Sin cartones', alguien: 'Esperando a que alguien elija un cartón' });
 const fichas = (n) => `${Number(n || 0).toLocaleString('es')} ${n === 1 ? 'ficha' : 'fichas'}`;
 const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
 
@@ -114,6 +133,11 @@ export function iniciarAnfitrion(codigo, show) {
                 return;
             case 'ganador':
                 return celebrar(mensaje);
+            case 'dorada':
+                // Después del anuncio de la propia bola, que sale a la vez
+                return gsap.delayedCall(2.4, () => anunciarDorada(mensaje));
+            case 'reaccion':
+                return flotarReaccion(mensaje.emoji, mensaje.apodo);
             case 'aviso':
                 return show.avisar(mensaje.texto);
             case 'error':
@@ -204,6 +228,12 @@ export function iniciarAnfitrion(codigo, show) {
         $('lobbyCodigo').innerHTML = [...codigo].map((letra, i) =>
             `<span class="lobby-letra ${COLORES_CODIGO[i]}" style="--r:${[-5, 3, -2, 5, -4, 2][i]}deg">${letra}</span>`).join('');
         $('lobbyEnlace').value = urlJugar(codigo);
+        try { $('lobbyQr').innerHTML = svgQr(urlJugar(codigo)); } catch { $('lobbyQr').classList.add('hidden'); }
+        $('detenerCuentaBtn').addEventListener('click', () => enviar({ tipo: 'detenerCuenta' }));
+        setInterval(() => {
+            document.querySelectorAll('[data-hasta]').forEach((el) => { el.textContent = String(segundosHasta(Number(el.dataset.hasta))); });
+            if (ultimo?.estado === 'lobby' && ultimo.inicioAutoEn) $('lobbyCuentaSeg').textContent = String(segundosHasta(ultimo.inicioAutoEn));
+        }, 250);
         $('copiarBtn').addEventListener('click', copiarEnlace);
         $('lobbyEnlace').addEventListener('focus', (ev) => ev.target.select());
         $('empezarBtn').addEventListener('click', () => {
@@ -251,7 +281,9 @@ export function iniciarAnfitrion(codigo, show) {
     // En lobby el pozo aún no está cerrado: ventas + pozo extra
     function pozoDe(e) {
         if (e.estado !== 'lobby' && e.pozo) return e.pozo;
-        return Math.max(e.pozo || 0, vendidos(e) * (e.config?.precioCarton || 0) + (e.config?.pozoExtra || 0));
+        const ventas = vendidos(e) * (e.config?.precioCarton || 0);
+        const aporte = Math.floor((ventas * (e.config?.botePorcentaje || 0)) / 100);
+        return Math.max(e.pozo || 0, ventas - aporte + (e.config?.pozoExtra || 0));
     }
 
     function pintarLobby(e) {
@@ -259,13 +291,15 @@ export function iniciarAnfitrion(codigo, show) {
         const total = config.cartones || 0;
         const vendidosN = vendidos(e);
         const pozo = pozoDe(e);
+        const p = palabras(e);
+        $('lobbyUnidades').textContent = p.Varios;
         $('lobbyNombre').textContent = e.nombre || `Sala ${codigo}`;
         $('lobbyPozo').textContent = pozo.toLocaleString('es');
         $('lobbyVendidos').textContent = vendidosN;
         $('lobbyTotal').textContent = total;
         $('lobbyBarra').style.width = `${total ? (vendidosN / total) * 100 : 0}%`;
         $('lobbyReglas').textContent =
-            `${fichas(config.precioCarton)} por cartón · máx. ${config.maxCartonesPorJugador ?? '—'} por jugador · ${fichas(config.fichasIniciales)} al entrar`;
+            `${esModoFila(config) ? 'Fila de 5 · ' : ''}${fichas(config.precioCarton)} por ${p.uno} · máx. ${config.maxCartonesPorJugador ?? '—'} por jugador · ${fichas(config.fichasIniciales)} al entrar`;
         $('lobbyPremios').innerHTML = (config.premios || []).map((p, i) => `
             <li class="flex items-center justify-between gap-3 rounded-xl border-[2.5px] border-tinta bg-papel px-3 py-2">
                 <span class="flex items-center gap-2">
@@ -284,7 +318,7 @@ export function iniciarAnfitrion(codigo, show) {
                     <span class="block truncate font-ui font-black">${escapar(j.apodo)}</span>
                     <span class="flex flex-wrap gap-1 pt-0.5">${(j.cartones || []).length
                         ? j.cartones.map((n) => `<span class="rounded-md border-2 border-tinta bg-girasol px-1.5 font-display text-[11px] leading-5">${n}</span>`).join('')
-                        : '<span class="font-ui text-xs font-bold text-tinta/50">Sin cartones</span>'}</span>
+                        : `<span class="font-ui text-xs font-bold text-tinta/50">${p.sin}</span>`}</span>
                 </span>
                 <span class="shrink-0 text-right font-ui text-xs font-bold text-tinta/60">${fichas(j.fichas)}</span>
                 <button type="button" data-expulsar="${escapar(j.id)}" class="boton h-8 shrink-0 px-2 text-[10px] ${expulsarPendiente === j.id ? 'bg-tomate text-crema' : 'bg-crema'}"
@@ -299,11 +333,39 @@ export function iniciarAnfitrion(codigo, show) {
         $('lobbyJusto').classList.toggle('flex', Boolean(compromiso));
         $('lobbyCompromiso').textContent = compromiso ? compromiso.slice(0, 12) : '';
 
+        $('lobbyExtras').innerHTML = htmlExtras(e);
+        const cuenta = Boolean(e.inicioAutoEn);
+        $('lobbyCuenta').classList.toggle('hidden', !cuenta);
+        $('lobbyCuenta').classList.toggle('flex', cuenta);
+        if (cuenta) $('lobbyCuentaSeg').textContent = String(segundosHasta(e.inicioAutoEn));
+
         const listo = vendidosN > 0;
         $('empezarBtn').disabled = !listo;
         $('empezarAyuda').textContent = listo
-            ? `${plural(vendidosN, 'cartón vendido', 'cartones vendidos')} · ¡Todo listo!`
-            : jugadores.length ? 'Esperando a que alguien elija un cartón' : 'Esperando jugadores';
+            ? `${plural(vendidosN, p.vendido, p.vendidos)} · ¡Todo listo!`
+            : jugadores.length ? p.alguien : 'Esperando jugadores';
+    }
+
+    // Ronda, bote y bola dorada (lobby y panel de partida)
+    function htmlExtras(e, tag = 'div') {
+        const config = e?.config || {};
+        const filas = [];
+        if (config.rondasSeguidas) {
+            filas.push(`<${tag} class="flex items-center justify-between gap-2 rounded-xl border-[2.5px] border-tinta bg-menta px-3 py-1.5">
+                <span class="font-ui font-black uppercase tracking-wide">Ronda ${e.ronda ?? 1}</span><span class="font-ui text-xs font-bold">rondas seguidas</span></${tag}>`);
+        }
+        if (config.botePorcentaje > 0) {
+            const bote = (e.bote || 0) + (e.estado === 'lobby' ? e.aporteRonda || 0 : 0);
+            filas.push(`<${tag} class="flex items-center justify-between gap-2 rounded-xl border-[2.5px] border-tinta bg-fucsia px-3 py-1.5">
+                <span class="font-ui font-black uppercase tracking-wide">Bote <span class="text-xs normal-case">· en ${config.boteBolas} bolas o menos</span></span>
+                <span class="font-display text-lg">${bote.toLocaleString('es')}</span></${tag}>`);
+        }
+        if (config.bolaDorada) {
+            filas.push(`<${tag} class="flex items-center justify-between gap-2 rounded-xl border-[2.5px] border-tinta bg-girasol px-3 py-1.5">
+                <span class="font-ui font-black uppercase tracking-wide">Bola dorada <span class="text-xs normal-case">· premio ×2</span></span>
+                <span class="font-display text-lg">${e.dorada ? escapar(`${show.columnaDe(e.dorada).letra}-${e.dorada}`) : '¿?'}</span></${tag}>`);
+        }
+        return filas.join('');
     }
 
     function pintarInfo(e) {
@@ -312,14 +374,14 @@ export function iniciarAnfitrion(codigo, show) {
         $('infoJugadores').textContent = `${conectados}/${jugadores.length} conectados`;
         $('infoPozo').textContent = pozoDe(e).toLocaleString('es');
         const premios = e.premios?.length ? e.premios : (e.config?.premios || []);
-        $('infoPremios').innerHTML = premios.map((p, i) => {
+        $('infoPremios').innerHTML = htmlExtras(e, 'li') + premios.map((p, i) => {
             const enJuego = i === e.premioActual && e.estado !== 'lobby' && e.estado !== 'terminada';
             const ganadores = p.ganadores || [];
             const detalle = ganadores.length
                 ? `<span class="truncate text-tinta/70">${ganadores.map((g) => escapar(g.apodo)).join(', ')}</span>`
                 : enJuego ? '<span class="premio-en-juego">En juego</span>' : '<span class="text-tinta/40">Pendiente</span>';
             return `<li class="premio-fila ${enJuego ? 'activo' : ''} ${ganadores.length ? 'ganado' : ''}">
-                <span class="font-ui text-[11px] font-black uppercase tracking-wide">${ganadores.length ? '✓ ' : ''}${escapar(nombrePremio(p.modalidad))}</span>
+                <span class="font-ui text-[11px] font-black uppercase tracking-wide">${ganadores.length ? '✓ ' : ''}${escapar(nombrePremio(p.modalidad))}${p.doble ? ' ×2' : ''}</span>
                 <span class="font-display text-xs">${(p.fichas ?? Math.floor((pozoDe(e) * p.porcentaje) / 100)).toLocaleString('es')}</span>
                 <span class="col-span-2 flex min-w-0 font-ui text-[11px] font-bold">${detalle}</span>
             </li>`;
@@ -330,11 +392,12 @@ export function iniciarAnfitrion(codigo, show) {
         const abierta = Boolean(e.ventanaHasta) && e.estado === 'jugando';
         const el = $('ventanaBingo');
         if (abierta && !ventanaAbierta) {
+            $('ventanaTitulo').textContent = esModoFila(e.config) ? '¡Fila completa!' : esModoElige(e.config) ? '¡Jugada completa!' : '¡Bingo cantado!';
             el.classList.remove('hidden');
             gsap.fromTo(el.firstElementChild, { scale: 2.5, rotation: -20, opacity: 0 }, { scale: 1, rotation: -3, opacity: 1, duration: 0.45, ease: 'back.out(2)' });
             if (show.sonido()) {
                 sfx.golpe(0.8);
-                sfx.cantar('¡Bingo!');
+                sfx.cantar(show.voz(esModoAuto(e.config) ? 'fila' : 'bingo'));
             }
         } else if (!abierta && ventanaAbierta) {
             gsap.to(el.firstElementChild, { scale: 0.6, opacity: 0, duration: 0.25, ease: 'power2.in', onComplete: () => el.classList.add('hidden') });
@@ -369,7 +432,15 @@ export function iniciarAnfitrion(codigo, show) {
     }
 
     // ---------- Ganadores y fin ----------
+    function htmlFilaGanadora(numeros) {
+        return `<div class="flex gap-2 rounded-2xl border-[3px] border-tinta bg-white p-3">${numeros.map((x, c) => `
+            <span class="fila-celda grid h-14 w-14 place-items-center rounded-full border-[3px] border-tinta font-display text-xl text-tinta"
+                  style="background:${COLORES_LETRA[c]}">${x}</span>`).join('')}</div>`;
+    }
+
     function htmlCartonGanador(g, modalidad) {
+        if (modalidad === MODALIDAD_FILA) return Number.isInteger(g.carton) ? htmlFilaGanadora(numerosDeFila(g.carton)) : '';
+        if (modalidad === MODALIDAD_ELIGE) return ultimo?.jugadas?.[g.carton] ? htmlFilaGanadora(ultimo.jugadas[g.carton]) : '';
         if (!ultimo?.serie || !Number.isInteger(g.carton)) return '';
         try {
             const carton = generarCarton(ultimo.serie, g.carton);
@@ -380,7 +451,61 @@ export function iniciarAnfitrion(codigo, show) {
         }
     }
 
-    function celebrar({ modalidad, ganadores = [], siguiente = null }) {
+    // Bola dorada: cartel dorado gigante y voz
+    function anunciarDorada({ numero, fichas: total }) {
+        const el = document.createElement('div');
+        el.className = 'aviso-dorada';
+        el.innerHTML = `<p class="font-display text-4xl leading-none sm:text-6xl">¡Bola dorada!</p>
+            <p class="mt-2 font-ui text-lg font-black">Salió el ${escapar(`${show.columnaDe(numero).letra}-${numero}`)} · el premio se duplica: ${fichas(total)}</p>`;
+        document.body.append(el);
+        gsap.timeline({ onComplete: () => el.remove() })
+            .fromTo(el, { scale: 0.2, rotation: -12, autoAlpha: 0 }, { scale: 1, rotation: -3, autoAlpha: 1, duration: 0.6, ease: 'back.out(2.2)' })
+            .to(el, { autoAlpha: 0, y: -40, duration: 0.5, ease: 'power2.in' }, '+=2.6');
+        show.sacudir();
+        if (show.sonido()) {
+            sfx.fanfarria();
+            gsap.delayedCall(0.6, () => sfx.cantar(show.voz('dorada')));
+        }
+    }
+
+    // Reacción de un jugador: emoji que sube por la pantalla con su apodo
+    function flotarReaccion(emoji, apodo) {
+        if (document.hidden) return;
+        const el = document.createElement('div');
+        el.className = 'reaccion-show';
+        el.innerHTML = `<span class="text-5xl sm:text-6xl">${escapar(emoji)}</span><span class="reaccion-apodo">${escapar(apodo)}</span>`;
+        el.style.left = `${8 + Math.random() * 55}%`;
+        document.body.append(el);
+        setTimeout(() => el.remove(), 3200);
+    }
+
+    // Repetición de la bola decisiva a cámara lenta antes de la celebración
+    function repeticion(numero, alTerminar) {
+        if (show.reducirMovimiento || !Number.isInteger(numero)) return alTerminar();
+        const { letra, color } = show.columnaDe(numero);
+        const el = document.createElement('div');
+        el.className = 'repeticion';
+        el.innerHTML = `<div class="repeticion-barra arriba"></div><div class="repeticion-barra abajo"></div>
+            <p class="repeticion-etiqueta">● Repetición · bola decisiva</p>
+            <div class="repeticion-bola" style="--c:${color}"><b><small>${letra}</small>${numero}</b></div>`;
+        document.body.append(el);
+        const bola = el.querySelector('.repeticion-bola');
+        gsap.timeline({ onComplete: () => { el.remove(); alTerminar(); } })
+            .fromTo(el.querySelectorAll('.repeticion-barra'), { scaleY: 0 }, { scaleY: 1, duration: 0.35, ease: 'power2.out' })
+            .from(el.querySelector('.repeticion-etiqueta'), { autoAlpha: 0, x: -30, duration: 0.3 }, 0.2)
+            .fromTo(bola, { scale: 0.15, rotation: -540, x: -260, y: 160, filter: 'blur(6px)' },
+                { scale: 1, rotation: 0, x: 0, y: 0, filter: 'blur(0px)', duration: 1.6, ease: 'power3.out' }, 0.25)
+            .call(() => show.sacudir(), null, 1.55)
+            .to(bola, { scale: 1.12, duration: 0.18, yoyo: true, repeat: 1, ease: 'power1.inOut' }, 1.6)
+            .to(el, { autoAlpha: 0, duration: 0.3 }, '+=0.25');
+    }
+
+    function celebrar(mensaje) {
+        const bolas = ultimo?.bolas || [];
+        repeticion(bolas.at(-1), () => mostrarGanador(mensaje));
+    }
+
+    function mostrarGanador({ modalidad, ganadores = [], siguiente = null, bote = 0 }) {
         const nombre = nombrePremio(modalidad);
         const premios = ultimo?.premios || [];
         const indice = premios.findIndex((p) => p.modalidad === modalidad);
@@ -393,11 +518,12 @@ export function iniciarAnfitrion(codigo, show) {
                 <li class="flex items-center justify-between gap-3 rounded-xl border-[2.5px] border-tinta bg-papel px-3 py-2">
                     <span class="min-w-0">
                         <span class="block truncate font-ui text-lg font-black">${escapar(g.apodo)}</span>
-                        <span class="etiqueta text-tinta/60">Cartón nº ${escapar(g.carton)}</span>
+                        <span class="etiqueta text-tinta/60">${palabras(ultimo).Uno} nº ${escapar(g.carton)}</span>
                     </span>
                     <span class="shrink-0 rounded-lg border-[2.5px] border-tinta bg-girasol px-2 py-1 font-display text-base shadow-duro-sm">+${Number(g.fichas || 0).toLocaleString('es')}</span>
                 </li>`).join('')}
             </ul>
+            ${bote ? `<p class="mt-3 rounded-xl border-[2.5px] border-tinta bg-fucsia px-3 py-2 text-center font-display text-xl">¡Y se lleva el bote! +${Number(bote).toLocaleString('es')}</p>` : ''}
             <div class="ganadores-cartones mt-4 flex flex-wrap justify-center gap-3 ${varios ? 'varios' : ''}">
                 ${ganadores.slice(0, 3).map((g) => htmlCartonGanador(g, modalidad)).join('')}
             </div>
@@ -416,7 +542,7 @@ export function iniciarAnfitrion(codigo, show) {
             sello.classList.remove('hidden');
             gsap.fromTo(sello, { scale: 3.5, rotation: -35, autoAlpha: 0 }, { scale: 1, rotation: -12, autoAlpha: 1, duration: 0.42, ease: 'power4.in' });
         });
-        gsap.from('#bingoEnLinea .carton-celda', { scale: 0, duration: 0.35, ease: 'back.out(2.5)', stagger: { amount: 0.35, from: 'center' }, delay: 0.9 });
+        gsap.from('#bingoEnLinea .carton-celda, #bingoEnLinea .fila-celda', { scale: 0, duration: 0.35, ease: 'back.out(2.5)', stagger: { amount: 0.35, from: 'center' }, delay: 0.9 });
 
         // El servidor reanuda el sorteo a los 6 s: el modal se cierra antes
         cierreGanador?.kill();
@@ -432,9 +558,18 @@ export function iniciarAnfitrion(codigo, show) {
                 <span class="font-ui text-sm font-bold">${ganadores} · <span class="font-display">${Number(p.fichas || 0).toLocaleString('es')}</span></span>
             </li>`;
         }).join('');
+        const ranking = [...(e?.jugadores || [])].filter((j) => (j.ganado || 0) > 0).sort((a, b) => b.ganado - a.ganado).slice(0, 5);
+        const medallas = ['🥇', '🥈', '🥉', '4.', '5.'];
+        const htmlRanking = ranking.length ? `<p class="etiqueta mt-4">Ranking de la noche</p>
+            <ol class="mx-auto mt-1 max-w-md">${ranking.map((j, i) => `<li class="flex items-baseline justify-between gap-4 border-t-2 border-tinta/15 py-1 text-left font-ui text-sm font-bold">
+                <span>${medallas[i]} ${escapar(j.apodo)}</span><span class="font-display">+${Number(j.ganado).toLocaleString('es')}</span></li>`).join('')}</ol>` : '';
+        const siguienteRonda = e?.config?.rondasSeguidas && e?.siguienteRondaEn
+            ? `<p class="mt-3 rounded-full bg-menta px-4 py-1.5 font-ui font-black">Ronda ${(e.ronda ?? 1) + 1} en <span class="font-display text-lg" data-hasta="${e.siguienteRondaEn}">${segundosHasta(e.siguienteRondaEn)}</span> s</p>` : '';
         return `<p class="font-display text-3xl sm:text-5xl">¡Partida terminada!</p>
-            <p class="etiqueta mt-1">${plural((e?.bolas || []).length, 'bola', 'bolas')} · pozo de ${fichas(e?.pozo)}</p>
+            <p class="etiqueta mt-1">${e?.config?.rondasSeguidas ? `Ronda ${e.ronda ?? 1} · ` : ''}${plural((e?.bolas || []).length, 'bola', 'bolas')} · pozo de ${fichas(e?.pozo)}</p>
             <ol class="mx-auto mt-3 max-w-md">${filas}</ol>
+            ${htmlRanking}
+            ${siguienteRonda}
             <div class="mt-4 flex flex-wrap justify-center gap-2">
                 ${e?.justo ? '<button id="finVerificarBtn" type="button" class="boton pointer-events-auto h-11 bg-menta px-4">Verificar partida</button>' : ''}
                 <button id="finNuevaBtn" type="button" class="boton pointer-events-auto h-11 bg-tinta px-5 text-crema">Nueva partida</button>
@@ -458,6 +593,7 @@ export function iniciarAnfitrion(codigo, show) {
                 semillaClientes: j.semillaClientes,
                 serie: e.serie,
                 bolas: e.bolas || [],
+                dorada: e.config?.bolaDorada ? e.dorada ?? null : null,
             });
         }
         caja.classList.remove('hidden');

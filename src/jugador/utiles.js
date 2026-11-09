@@ -1,6 +1,7 @@
 // Utilidades de la vista del jugador: lectura de la instantánea `estado` (docs/en-linea.md),
 // formatos y preferencias. Sin DOM, para poder probarlas con Node.
 import { LETRAS, PATRONES, generarCarton, verificar } from '../carton.js';
+import { MODALIDAD_FILA, INFO_FILA, MODALIDAD_ELIGE, INFO_ELIGE, esModoFila, esModoElige } from '../filas.js';
 
 export const COLORES = ['#ff5a36', '#ffc43d', '#19c3a0', '#3d6bff', '#ff4fa3'];
 export const TOTAL_BOLAS = 75;
@@ -16,8 +17,17 @@ export const esc = (texto) => String(texto ?? '').replace(/[&<>"']/g, (ch) =>
 
 export const fmt = (n) => Math.trunc(Number(n) || 0).toLocaleString('es-ES');
 export const fichas = (n) => `${fmt(n)} ${Math.trunc(Number(n) || 0) === 1 ? 'ficha' : 'fichas'}`;
-export const nombreModalidad = (m) => PATRONES[m]?.nombre ?? String(m ?? '');
-export const detalleModalidad = (m) => PATRONES[m]?.detalle ?? '';
+const infoModalidad = (m) => (m === MODALIDAD_FILA ? INFO_FILA : m === MODALIDAD_ELIGE ? INFO_ELIGE : PATRONES[m]);
+export const nombreModalidad = (m) => infoModalidad(m)?.nombre ?? String(m ?? '');
+export const detalleModalidad = (m) => infoModalidad(m)?.detalle ?? '';
+
+// Palabras según el tipo de juego: cartones (bingo clásico) o filas («Fila de 5»)
+export function unidad(sala) {
+    if (esModoElige(sala?.config)) return { uno: 'jugada', varios: 'jugadas', Uno: 'Jugada', Varios: 'Jugadas', la: 'la', una: 'una', tuyo: 'tuya' };
+    return esModoFila(sala?.config)
+        ? { uno: 'fila', varios: 'filas', Uno: 'Fila', Varios: 'Filas', la: 'la', una: 'una', tuyo: 'tuya' }
+        : { uno: 'cartón', varios: 'cartones', Uno: 'Cartón', Varios: 'Cartones', la: 'el', una: 'un', tuyo: 'tuyo' };
+}
 
 // Apodo como lo acepta el servidor: 1–20 caracteres tras trim, sin < ni >
 export const limpiarApodo = (texto) => String(texto ?? '').replace(/[<>]/g, '').trim().slice(0, 20);
@@ -61,7 +71,10 @@ export const vendidos = (sala) => Object.keys(sala?.ocupados ?? {}).length;
 export function pozoDe(sala) {
     if (!sala) return 0;
     if (sala.estado === 'lobby') {
-        const estimado = vendidos(sala) * (sala.config?.precioCarton ?? 0) + (sala.config?.pozoExtra ?? 0);
+        // Ventas menos lo que va al bote, más lo que pone el anfitrión (igual que el servidor)
+        const ventas = vendidos(sala) * (sala.config?.precioCarton ?? 0);
+        const aporte = Math.floor((ventas * (sala.config?.botePorcentaje ?? 0)) / 100);
+        const estimado = ventas - aporte + (sala.config?.pozoExtra ?? 0);
         return Math.max(estimado, Number(sala.pozo) || 0);
     }
     return Number(sala.pozo) || 0;
@@ -78,6 +91,7 @@ export function premiosDe(sala) {
         porcentaje: p.porcentaje,
         fichas: Number(p.fichas) || Math.floor((pozo * (p.porcentaje || 0)) / 100),
         ganadores: p.ganadores ?? [],
+        doble: Boolean(p.doble),
         enJuego: sala.estado !== 'lobby' && sala.premioActual === i,
     }));
 }
@@ -90,7 +104,7 @@ export function premioActual(sala) {
 // Fichas ganadas por el jugador en esta partida
 export function gananciasDe(sala, miId) {
     return premiosDe(sala).reduce((total, p) =>
-        total + p.ganadores.filter((g) => g.jugadorId === miId).reduce((s, g) => s + (Number(g.fichas) || 0), 0), 0);
+        total + p.ganadores.filter((g) => g.jugadorId === miId).reduce((s, g) => s + (Number(g.fichas) || 0) + (Number(g.bote) || 0), 0), 0);
 }
 
 // Estado de un cartón para dibujarlo: `marcas` son los números que el jugador ve marcados

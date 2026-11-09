@@ -361,3 +361,117 @@ body.sala-lobby #pizarraFondo { display: none; }
   .conexion-punto, .premio-en-juego, .ventana-bingo { animation: none !important; }
 }
 /* === Fin anfitrión en línea === */
+
+/* ---------- Reacciones, bola dorada y repetición (modo en línea) ---------- */
+.reaccion-flotante {
+    position: fixed;
+    bottom: 5rem;
+    z-index: 60;
+    font-size: 2rem;
+    pointer-events: none;
+    animation: reaccion-subir 2.6s ease-out forwards;
+}
+.reaccion-show {
+    position: fixed;
+    bottom: 6rem;
+    z-index: 38;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    pointer-events: none;
+    animation: reaccion-subir 3.2s cubic-bezier(.2, .7, .3, 1) forwards;
+}
+.reaccion-apodo {
+    margin-top: 0.15rem;
+    border: 2px solid #14112b;
+    border-radius: 999px;
+    background: #fff6e5;
+    padding: 0 0.5rem;
+    font-family: 'Archivo', system-ui, sans-serif;
+    font-size: 0.75rem;
+    font-weight: 900;
+    color: #14112b;
+}
+@keyframes reaccion-subir {
+    0% { transform: translateY(0) scale(0.5); opacity: 0; }
+    12% { transform: translateY(-24px) scale(1.15); opacity: 1; }
+    70% { opacity: 1; }
+    100% { transform: translateY(-46vh) scale(0.9) rotate(-8deg); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .reaccion-flotante, .reaccion-show { animation-duration: 1.2s; }
+}
+
+.aviso-dorada {
+    position: fixed;
+    left: 50%;
+    top: 30%;
+    z-index: 44;
+    translate: -50% 0;
+    max-width: calc(100vw - 2rem);
+    border: 4px solid #14112b;
+    border-radius: 1.5rem;
+    background: linear-gradient(135deg, #ffe08a, #ffc43d 45%, #e9a93a);
+    padding: 1.25rem 2rem;
+    text-align: center;
+    color: #14112b;
+    box-shadow: 8px 8px 0 #14112b, 0 0 80px rgba(255, 196, 61, 0.7);
+    pointer-events: none;
+}
+
+.repeticion {
+    position: fixed;
+    inset: 0;
+    z-index: 39;
+    display: grid;
+    place-items: center;
+    background: rgba(20, 17, 43, 0.45);
+    pointer-events: none;
+}
+.repeticion-barra {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 11vh;
+    background: #000;
+}
+.repeticion-barra.arriba { top: 0; transform-origin: top; }
+.repeticion-barra.abajo { bottom: 0; transform-origin: bottom; }
+.repeticion-etiqueta {
+    position: absolute;
+    top: calc(11vh + 1rem);
+    left: 1.5rem;
+    font-family: 'Archivo', system-ui, sans-serif;
+    font-size: 0.9rem;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #ff5a36;
+}
+.repeticion-bola {
+    display: grid;
+    place-items: center;
+    width: min(42vh, 70vw);
+    aspect-ratio: 1;
+    border: 6px solid #14112b;
+    border-radius: 999px;
+    background: radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.55), transparent 32%), var(--c);
+    box-shadow: 10px 10px 0 #14112b;
+}
+.repeticion-bola b {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Bungee', system-ui, sans-serif;
+    color: #14112b;
+    width: 58%;
+    aspect-ratio: 1;
+    border: 5px solid #14112b;
+    border-radius: 999px;
+    background: #fff6e5;
+    font-size: min(12vh, 18vw);
+    font-weight: 400;
+    line-height: 0.95;
+}
+.repeticion-bola small { font-size: 0.32em; line-height: 1; }

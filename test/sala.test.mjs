@@ -300,13 +300,15 @@ test('la instantánea nunca contiene tokens ni el registro interno', () => {
     assert.ok(!/token/i.test(texto));
     const vista = juego.instantanea(sala);
     assert.deepEqual(Object.keys(vista).sort(), [
-        'anfitrionConectado', 'bolas', 'codigo', 'config', 'estado', 'jugadores', 'justo', 'nombre', 'ocupados',
-        'pozo', 'premioActual', 'premios', 'serie', 'siguienteBolaEn', 'ventanaHasta',
+        'anfitrionConectado', 'aporteRonda', 'bolas', 'bote', 'codigo', 'config', 'dorada', 'doradaSalio', 'estado',
+        'inicioAutoEn', 'jugadas', 'jugadores', 'justo', 'nombre', 'ocupados', 'pozo', 'premioActual', 'premios',
+        'ronda', 'serie', 'siguienteBolaEn', 'siguienteRondaEn', 'ventanaHasta',
     ]);
     assert.ok(!texto.includes(sala.semillaServidor), 'la semilla del servidor no se publica durante la partida');
     for (const j of sala.jugadores) assert.ok(!JSON.stringify(vista.jugadores).includes(j.semilla));
     assert.deepEqual(vista.ocupados, { 1: ids.Ana, 2: ids.Beto });
-    assert.deepEqual(Object.keys(vista.jugadores[0]).sort(), ['apodo', 'cartones', 'conectado', 'fichas', 'id']);
+    assert.deepEqual(Object.keys(vista.jugadores[0]).sort(), ['apodo', 'cartones', 'conectado', 'fichas', 'ganado', 'id', 'repetir']);
+    assert.ok(!Object.keys(vista.jugadores[0]).includes('ultimos'));
     vista.jugadores[0].fichas = -1;
     assert.notEqual(sala.jugadores[0].fichas, -1, 'la instantánea es una copia');
 });
@@ -418,4 +420,174 @@ test('sala guardada sin orden (versión anterior): se reconstruye desde las semi
     delete lobby.ventana;
     assert.deepEqual(juego.sanear(lobby), []);
     assert.deepEqual([lobby.registro, lobby.ventana], [[], []]);
+});
+
+// ---------- Modo «Fila de 5» ----------
+test('fila de 5: tablero fijo de 15 filas que reparte las 75 bolas sin repetir', async () => {
+    const { numerosDeFila, TOTAL_FILAS } = await import('../src/filas.js');
+    assert.deepEqual(numerosDeFila(1), [1, 16, 31, 46, 61]);
+    assert.deepEqual(numerosDeFila(15), [15, 30, 45, 60, 75]);
+    const todos = Array.from({ length: TOTAL_FILAS }, (_, i) => numerosDeFila(i + 1)).flat();
+    assert.equal(new Set(todos).size, 75);
+    assert.throws(() => numerosDeFila(16), RangeError);
+});
+
+test('fila de 5: la configuración fija 15 filas y un premio con todo el pozo', () => {
+    const config = juego.validarConfig({ tipo: 'fila', cartones: 200, premios: [{ modalidad: 'linea', porcentaje: 100 }], precioCarton: 5 });
+    assert.equal(config.tipo, 'fila');
+    assert.equal(config.cartones, 15);
+    assert.deepEqual(config.premios, [{ modalidad: 'fila5', porcentaje: 100 }]);
+    assert.equal(juego.validarConfig({}).tipo, 'carton');
+    assert.throws(() => juego.validarConfig({ tipo: 'loteria' }), /tipo/);
+});
+
+test('fila de 5: el servidor entrega el premio solo a la primera fila vendida completa', () => {
+    // La fila 2 (2, 17, 32, 47, 62) se completa antes que la 3; la fila 1 no está vendida
+    const cola = [1, 16, 31, 46, 61, 2, 17, 32, 47, 62];
+    const { sala, ids, azar } = salaJugando({ Ana: [2], Beto: [3] }, cola, { tipo: 'fila', precioCarton: 5, pozoExtra: 10 });
+    assert.equal(sala.pozo, 20);
+    assert.throws(() => juego.cantarBingo(sala, ids.Ana, 2, 1), /no hace falta cantar/);
+
+    let ahora = sacar(sala, azar, cola.slice(1, 9)); // la fila 1 completa (sin dueño) no abre ventana
+    assert.equal(sala.ventanaHasta, null);
+    const eventos = juego.avanzar(sala, ahora);   // sale el 62: fila 2 completa
+    assert.equal(eventos[0].numero, 62);
+    assert.match(eventos[1].texto, /Ana \(fila 2\)/);
+    assert.notEqual(sala.ventanaHasta, null);
+    assert.equal(sala.siguienteBolaEn, null);
+
+    const [ganador] = juego.avanzar(sala, sala.ventanaHasta);
+    assert.equal(ganador.tipo, 'ganador');
+    assert.equal(ganador.modalidad, 'fila5');
+    assert.deepEqual(ganador.ganadores.map((g) => [g.apodo, g.carton, g.fichas]), [['Ana', 2, 20]]);
+    assert.equal(sala.estado, 'terminada');
+    assert.equal(sala.jugadores.find((j) => j.id === ids.Ana).fichas, 100 - 5 + 20);
+});
+
+test('fila de 5: mensajes en femenino y límite por jugador', () => {
+    const { sala, unir } = nuevaSala({ tipo: 'fila', maxCartonesPorJugador: 1 });
+    const ana = unir('Ana');
+    const beto = unir('Beto');
+    juego.elegirCarton(sala, ana.id, 4);
+    assert.throws(() => juego.elegirCarton(sala, ana.id, 4), /Esa fila ya es tuya/);
+    assert.throws(() => juego.elegirCarton(sala, beto.id, 4), /Esa fila ya tiene dueño/);
+    assert.throws(() => juego.elegirCarton(sala, ana.id, 5), /como máximo 1 filas/);
+    assert.throws(() => juego.soltarCarton(sala, beto.id, 4), /Esa fila no es tuya/);
+    assert.throws(() => juego.elegirCarton(sala, beto.id, 16), /La fila debe ser un número del 1 al 15/);
+});
+
+// ---------- Rondas seguidas, bote, bola dorada, «Elige tus 5», ranking ----------
+test('figuras nuevas: L, T, X, marco y cuadro central', async () => {
+    const { PATRONES } = await import('../src/carton.js');
+    const carton = generarCarton(SERIE, 1);
+    const todas = new Set(numerosDe(carton));
+    for (const clave of ['letraL', 'letraT', 'letraX', 'marco', 'cuadro']) {
+        assert.ok(PATRONES[clave], clave);
+        assert.ok(verificar(carton, todas, clave).gana, `${clave} con todas las bolas`);
+        assert.ok(!verificar(carton, new Set(), clave).gana, `${clave} sin bolas`);
+    }
+    assert.equal(PATRONES.marco.figuras[0].length, 16);
+    assert.equal(PATRONES.letraX.figuras[0].length, 9);
+    assert.equal(PATRONES.cuadro.figuras[0].length, 9);
+});
+
+test('elige tus 5: jugadas propias, empates repartidos y validación', () => {
+    const cola = [3, 9, 21, 40, 70];
+    const { sala, unir } = nuevaSala({ tipo: 'elige', precioCarton: 10, cartones: 10 }, azarDirigido(cola));
+    const ana = unir('Ana', nuevaSemilla(16));
+    const beto = unir('Beto', nuevaSemilla(16));
+    assert.throws(() => juego.elegirCarton(sala, ana.id, null, [1, 2, 3, 4]), /exactamente 5/);
+    assert.throws(() => juego.elegirCarton(sala, ana.id, null, [1, 1, 2, 3, 4]), /No repitas/);
+    assert.throws(() => juego.elegirCarton(sala, ana.id, null, [1, 2, 3, 4, 76]), /1 al 75/);
+    juego.elegirCarton(sala, ana.id, null, [70, 3, 9, 21, 40]);
+    juego.elegirCarton(sala, beto.id, null, [3, 9, 21, 40, 70]);
+    juego.elegirCarton(sala, beto.id, null, [1, 2, 4, 5, 6]);
+    assert.deepEqual(sala.jugadas[1], [3, 9, 21, 40, 70]);
+    juego.soltarCarton(sala, beto.id, 3);
+    assert.equal(sala.jugadas[3], undefined);
+
+    juego.iniciar(sala, 0, azarDirigido(cola));
+    let ahora = sala.siguienteBolaEn;
+    for (let i = 0; i < 4; i++) { juego.avanzar(sala, ahora); ahora = sala.siguienteBolaEn ?? ahora; }
+    assert.notEqual(sala.ventanaHasta, null, 'las dos jugadas se completan con el 70');
+    const [ganador] = juego.avanzar(sala, sala.ventanaHasta);
+    assert.equal(ganador.modalidad, 'elige5');
+    assert.deepEqual(ganador.ganadores.map((g) => [g.apodo, g.fichas]), [['Ana', 10], ['Beto', 10]]);
+});
+
+test('bola dorada: duplica el premio en juego y se puede verificar', () => {
+    const { sala, ids, azar } = salaJugando({ Ana: [1] }, [], { bolaDorada: true, precioCarton: 10 });
+    assert.ok(Number.isInteger(sala.dorada));
+    assert.equal(juego.instantanea(sala).dorada, null, 'secreta hasta que sale');
+    const indice = sala.orden.indexOf(sala.dorada);
+    const premioAntes = sala.premios[0].fichas;
+    let ahora = sala.siguienteBolaEn;
+    let evento = null;
+    for (let i = 1; i <= indice; i++) {
+        const eventos = juego.avanzar(sala, ahora);
+        evento = eventos.find((e) => e.tipo === 'dorada') ?? evento;
+        ahora = sala.siguienteBolaEn;
+    }
+    if (indice > 0) {
+        assert.equal(evento?.numero, sala.dorada);
+        assert.equal(sala.premios[0].fichas, premioAntes * 2);
+        assert.equal(juego.instantanea(sala).dorada, sala.dorada);
+    }
+    void ids; void azar;
+});
+
+test('bote: se acumula entre rondas y se lo lleva quien gana en pocas bolas', () => {
+    // Fila 2 completa en la bola 5: dentro del límite de 10
+    const cola = [2, 17, 32, 47, 62];
+    const config = { tipo: 'fila', precioCarton: 10, botePorcentaje: 20, boteBolas: 10, rondasSeguidas: true };
+    const { sala, ids } = salaJugando({ Ana: [2], Beto: [3] }, cola, config);
+    assert.equal(sala.bote, 4, '20 % de 20 fichas');
+    assert.equal(sala.pozo, 16);
+    let ahora = sala.siguienteBolaEn;
+    for (let i = 0; i < 4; i++) { juego.avanzar(sala, ahora); ahora = sala.siguienteBolaEn ?? ahora; }
+    const [ganador] = juego.avanzar(sala, sala.ventanaHasta);
+    assert.equal(ganador.bote, 4);
+    assert.equal(ganador.ganadores[0].bote, 4);
+    assert.equal(sala.bote, 0);
+    const ana = sala.jugadores.find((j) => j.id === ids.Ana);
+    assert.equal(ana.fichas, 100 - 10 + 16 + 4);
+    assert.equal(ana.ganado, 20);
+
+    // Rondas seguidas: tras terminar, nueva ronda sola con las mismas filas y cuenta atrás
+    assert.equal(sala.estado, 'terminada');
+    assert.notEqual(sala.siguienteRondaEn, null);
+    const [aviso] = juego.avanzar(sala, sala.siguienteRondaEn);
+    assert.match(aviso.texto, /Ronda 2/);
+    assert.equal(sala.estado, 'lobby');
+    assert.deepEqual(sala.ocupados, { 2: ids.Ana, 3: ids.Beto });
+    assert.equal(ana.fichas, 100 - 10 + 16 + 4 - 10);
+    assert.notEqual(sala.inicioAutoEn, null);
+    juego.avanzar(sala, sala.inicioAutoEn);
+    assert.equal(sala.estado, 'jugando');
+});
+
+test('rondas seguidas: quien desactiva «repetir» no compra y el anfitrión puede parar la cuenta', () => {
+    const { sala, ids } = salaJugando({ Ana: [2], Beto: [3] }, [2, 17, 32, 47, 62], { tipo: 'fila', rondasSeguidas: true });
+    juego.fijarRepetir(sala, ids.Beto, false);
+    let ahora = sala.siguienteBolaEn;
+    for (let i = 0; i < 4; i++) { juego.avanzar(sala, ahora); ahora = sala.siguienteBolaEn ?? ahora; }
+    juego.avanzar(sala, sala.ventanaHasta);
+    juego.avanzar(sala, sala.siguienteRondaEn);
+    assert.deepEqual(sala.ocupados, { 2: ids.Ana });
+    juego.detenerCuenta(sala);
+    assert.equal(sala.inicioAutoEn, null);
+    assert.equal(juego.proximoEvento(sala), null);
+});
+
+test('verificación con bola dorada: la publicada sale de las semillas y una falsa se detecta', () => {
+    const { sala } = salaJugando({ Ana: [1] }, [], { bolaDorada: true }, juego.AZAR);
+    juego.interrumpir(sala);
+    const vista = juego.instantanea(sala);
+    const datos = {
+        compromiso: vista.justo.compromiso, semillaServidor: vista.justo.semillaServidor, semillasClientes: vista.justo.semillasClientes,
+        semillaClientes: vista.justo.semillaClientes, serie: vista.serie, bolas: vista.bolas,
+    };
+    assert.equal(verificarPartida({ ...datos, dorada: vista.dorada }).valida, true);
+    const falsa = vista.dorada === 75 ? 74 : vista.dorada + 1;
+    assert.match(verificarPartida({ ...datos, dorada: falsa }).errores.join(' '), /bola dorada/);
 });

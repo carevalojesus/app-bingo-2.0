@@ -66,6 +66,7 @@
                     <a id="cartonesBtn" href="carton.html" target="_blank" class="boton h-10 w-10 shrink-0 bg-crema sm:h-14 sm:w-14" aria-label="Imprimir cartones (se abre en otra pestaña)" title="Imprimir cartones">
                         <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"/><path d="M3 9h18M9 9v12M15 9v12M3 15h18"/></svg>
                     </a>
+                    <button id="vozBtn" class="boton h-10 w-10 shrink-0 bg-crema text-lg sm:h-14 sm:w-14" aria-label="Voz del narrador" title="Voz del narrador">🗣</button>
                     <button id="sonidoBtn" class="boton h-10 w-10 shrink-0 bg-crema sm:h-14 sm:w-14" aria-pressed="true" aria-label="Sonido y voz activados" title="Sonido y voz">
                         <svg id="iconoSonidoOn" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></svg>
                         <svg id="iconoSonidoOff" class="hidden h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z" fill="currentColor"/><path d="m23 9-6 6"/><path d="m17 9 6 6"/></svg>
@@ -158,6 +159,10 @@
                         <input id="lobbyEnlace" readonly class="campo min-w-0 flex-1 text-sm" aria-label="Enlace para unirse">
                         <button id="copiarBtn" type="button" class="boton h-12 shrink-0 bg-girasol px-3 text-xs">Copiar</button>
                     </div>
+                    <div class="mt-4 flex items-center gap-4">
+                        <div id="lobbyQr" class="h-32 w-32 shrink-0 rounded-xl border-[3px] border-tinta bg-white p-1.5 [&>svg]:h-full [&>svg]:w-full" role="img" aria-label="Código QR para unirse"></div>
+                        <p class="font-ui text-sm font-bold text-tinta/70"><span class="block font-display text-lg leading-tight text-tinta">Escanea y juega</span>Apunta la cámara del móvil al código: se abre la sala directamente.</p>
+                    </div>
                 </section>
                 <section class="carta pointer-events-auto p-4 sm:p-5">
                     <div class="flex items-end justify-between gap-3">
@@ -166,7 +171,7 @@
                             <p class="font-display text-3xl leading-none sm:text-4xl"><span id="lobbyPozo">0</span> <span class="text-base text-tinta/50">fichas</span></p>
                         </div>
                         <div class="text-right">
-                            <p class="etiqueta text-tinta/60">Cartones</p>
+                            <p id="lobbyUnidades" class="etiqueta text-tinta/60">Cartones</p>
                             <p class="font-display text-xl leading-none"><span id="lobbyVendidos">0</span><span class="text-sm text-tinta/40">/<span id="lobbyTotal">0</span></span></p>
                         </div>
                     </div>
@@ -175,6 +180,7 @@
                     </div>
                     <p id="lobbyReglas" class="etiqueta mt-2 text-tinta/60"></p>
                     <ol id="lobbyPremios" class="mt-3 grid gap-2"></ol>
+                    <div id="lobbyExtras" class="mt-3 grid gap-2 empty:hidden"></div>
                 </section>
                 <section id="lobbyJusto" class="carta pointer-events-auto hidden items-center gap-3 px-4 py-3">
                     <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg border-[2.5px] border-tinta bg-menta font-display text-base" aria-hidden="true">✓</span>
@@ -186,6 +192,10 @@
             <div class="flex flex-col items-center justify-end gap-3 lg:pb-2">
                 <button id="empezarBtn" type="button" class="boton pointer-events-auto h-16 bg-girasol px-10 font-display text-2xl normal-case sm:h-20 sm:text-3xl" disabled>¡Empezar!</button>
                 <p id="empezarAyuda" class="rounded-full bg-escenario/70 px-3 py-1 text-center font-ui text-sm font-bold text-crema/80">Esperando a que alguien compre un cartón</p>
+                <div id="lobbyCuenta" class="hidden items-center gap-2 rounded-full bg-menta px-4 py-1.5 font-ui font-black text-tinta shadow-duro-sm">
+                    <span>Empieza solo en <span id="lobbyCuentaSeg" class="font-display text-xl"></span> s</span>
+                    <button id="detenerCuentaBtn" type="button" class="boton pointer-events-auto h-8 bg-crema px-2 text-[10px]">Detener</button>
+                </div>
             </div>
 
             <section class="carta pointer-events-auto flex min-h-0 flex-col p-4 sm:p-5" aria-labelledby="tituloJugadores">
@@ -281,7 +291,7 @@
 <!-- Modo en línea: ventana de ¡Bingo! abierta mientras el servidor verifica -->
 <div id="ventanaBingo" class="pointer-events-none fixed left-1/2 top-1/3 z-[35] hidden -translate-x-1/2 lg:left-[calc((100%-424px)/2)]" role="status" aria-live="assertive">
     <div class="ventana-bingo carta flex items-center gap-3 bg-tomate px-5 py-3 text-crema shadow-duro-lg">
-        <span class="font-display text-2xl sm:text-4xl">¡Bingo cantado!</span>
+        <span id="ventanaTitulo" class="font-display text-2xl sm:text-4xl">¡Bingo cantado!</span>
         <span class="etiqueta">Verificando…</span>
     </div>
 </div>

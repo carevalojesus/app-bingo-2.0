@@ -20,6 +20,35 @@ if (sinConexion) {
     $('crearBtn').disabled = true;
 }
 
+// ---------- Tipo de juego ----------
+let tipo = 'carton';
+
+const AYUDA_TIPO = {
+    fila: 'Se venden 15 filas fijas; cada una lleva un número de cada letra (por ejemplo B-1, I-16, N-31, G-46, O-61). '
+        + 'Gana la primera fila vendida que complete sus 5 números y se lleva todo el pozo. El servidor lo detecta solo: nadie tiene que cantar.',
+    elige: 'Cada jugador elige sus propios 5 números (o pide unos al azar). Gana quien complete sus 5 primero; '
+        + 'si varios lo hacen con la misma bola, el pozo se reparte. Nadie tiene que cantar.',
+};
+const UNIDAD = { carton: ['cartón', 'cartones'], fila: ['fila', 'filas'], elige: ['jugada', 'jugadas'] };
+
+function pintarTipo() {
+    const auto = tipo !== 'carton';
+    document.querySelectorAll('[data-tipo]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.tipo === tipo)));
+    $('ayudaTipo').textContent = AYUDA_TIPO[tipo] ?? '';
+    $('ayudaTipo').classList.toggle('hidden', !auto);
+    $('campoCartones').classList.toggle('hidden', tipo === 'fila');
+    $('campoPremios').classList.toggle('hidden', auto);
+    document.querySelector('[data-etiqueta-total]').textContent = tipo === 'elige' ? 'Máximo de jugadas' : 'Cartones a la venta';
+    document.querySelectorAll('[data-unidad]').forEach((el) => { el.textContent = UNIDAD[tipo][0]; });
+    document.querySelectorAll('[data-unidades]').forEach((el) => { el.textContent = UNIDAD[tipo][1]; });
+}
+
+document.querySelectorAll('[data-tipo]').forEach((boton) => boton.addEventListener('click', () => {
+    tipo = boton.dataset.tipo;
+    pintarTipo();
+    mostrarErrores([]);
+}));
+
 // ---------- Premios ----------
 let premios = [
     { modalidad: 'linea', porcentaje: 30 },
@@ -76,10 +105,12 @@ $('agregarPremio').addEventListener('click', () => {
 // ---------- Validación ----------
 function leerConfig() {
     const errores = [];
-    const config = { nombre: $('nombre').value.trim() };
+    const config = { tipo, nombre: $('nombre').value.trim() };
     if (config.nombre.length > 40) errores.push('El nombre puede tener como máximo 40 caracteres.');
+    const fila = tipo === 'fila';
 
     for (const [id, min, max, nombre] of NUMEROS) {
+        if (fila && id === 'cartones') continue;
         const texto = $(id).value.trim();
         const valor = Number(texto);
         if (texto === '' || !Number.isInteger(valor) || valor < min || valor > max) {
@@ -90,6 +121,24 @@ function leerConfig() {
 
     config.intervalo = Number($('intervalo').value);
     if (!INTERVALOS.includes(config.intervalo)) errores.push('Elige una velocidad de la lista.');
+
+    config.rondasSeguidas = $('rondasSeguidas').checked;
+    config.bolaDorada = $('bolaDorada').checked;
+    config.botePorcentaje = Number($('botePorcentaje').value.trim());
+    if (!Number.isInteger(config.botePorcentaje) || config.botePorcentaje < 0 || config.botePorcentaje > 50) {
+        errores.push('El porcentaje para el bote debe ser un número entero entre 0 y 50.');
+    } else if (config.botePorcentaje > 0) {
+        config.boteBolas = Number($('boteBolas').value.trim());
+        if (!Number.isInteger(config.boteBolas) || config.boteBolas < 5 || config.boteBolas > 75) {
+            errores.push('Las bolas para ganar el bote deben ser un número entero entre 5 y 75.');
+        }
+    }
+
+    // Precio y máximo valen igual para filas; solo cambia la palabra del mensaje
+    const [uno, varios] = UNIDAD[tipo];
+    if (tipo !== 'carton') {
+        return { config, errores: errores.map((e) => e.replace('por cartón', `por ${uno}`).replace('de cartones', `de ${varios}`).replace('Los cartones a la venta deben', 'El máximo de jugadas debe')) };
+    }
 
     config.premios = premios.map((p) => ({ modalidad: p.modalidad, porcentaje: Number(p.porcentaje) }));
     if (config.premios.length < 1 || config.premios.length > MAX_PREMIOS) errores.push('Tiene que haber entre 1 y 3 premios.');

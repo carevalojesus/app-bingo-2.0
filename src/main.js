@@ -7,6 +7,7 @@ import { generarCarton, verificar, parsearCodigo, PATRONES, normalizarSerie, ser
 import { htmlCarton } from './carton-html.js';
 import { extraerBola } from './azar.js';
 import { salaEnUrl, iniciarAnfitrion } from './en-linea/anfitrion.js';
+import { MODOS_VOZ, leerModoVoz, guardarModoVoz, infoModoVoz, textoBola, textoMomento } from './narrador.js';
 
 const LETRAS = [
     { letra: 'B', color: '#ff5a36' },
@@ -225,7 +226,7 @@ function animarBola(n) {
             if (enEscena()) {
                 if (estado.sonido) {
                     sfx.golpe();
-                    gsap.delayedCall(0.35, () => enEscena() && estado.sonido && sfx.cantar(`${info.letra}, ${n}`));
+                    gsap.delayedCall(0.35, () => enEscena() && estado.sonido && sfx.cantar(textoBola(info.letra, n)));
                 }
                 anunciarBola(info, { ritmo: f, reducirMovimiento });
             }
@@ -423,7 +424,7 @@ function celebrarGanador() {
     escenario.celebrar();
     if (estado.sonido) {
         sfx.fanfarria();
-        sfx.cantar('¡Bingo!');
+        sfx.cantar(textoMomento('bingo'));
     }
 }
 
@@ -502,7 +503,7 @@ function bingo() {
     escenario.celebrar();
     if (estado.sonido) {
         sfx.fanfarria();
-        sfx.cantar('¡Bingo!');
+        sfx.cantar(textoMomento('bingo'));
     }
 }
 
@@ -678,6 +679,16 @@ $('sonidoBtn').addEventListener('click', () => {
     avisar(estado.sonido ? 'Sonido y voz activados' : 'Sonido apagado');
 });
 
+// Voz del narrador: normal, con frases, inglés o portugués
+$('vozBtn').addEventListener('click', () => {
+    const i = MODOS_VOZ.findIndex((m) => m.id === leerModoVoz());
+    const modo = MODOS_VOZ[(i + 1) % MODOS_VOZ.length];
+    guardarModoVoz(modo.id);
+    avisar(modo.nombre);
+    if (estado.sonido) sfx.cantar(textoBola('B', 15, modo.id));
+});
+$('vozBtn').title = `Voz del narrador: ${infoModoVoz(leerModoVoz()).nombre}`;
+
 $('velocidadBtn').addEventListener('click', () => {
     const i = VELOCIDADES.indexOf(estado.intervalo);
     estado.intervalo = VELOCIDADES[(i + 1) % VELOCIDADES.length];
@@ -770,6 +781,8 @@ async function arrancar() {
             hayModal: () => Boolean(modalAbierto),
             cantadas: () => estado.salidas.size,
             sonido: () => estado.sonido,
+            sacudir: () => escenario.sacudir?.(),
+            voz: textoMomento,
             columnaDe,
             colores: COLORES,
             reducirMovimiento,

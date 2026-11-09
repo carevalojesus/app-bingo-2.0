@@ -55,6 +55,20 @@ Necesita el servidor (Cloudflare Workers + Durable Objects, carpeta `worker/`); 
    y reparte el premio; los premios se juegan uno detrás de otro hasta el último. El anfitrión puede
    pausar, cambiar la velocidad, expulsar jugadores en la sala de espera y empezar una partida nueva.
 
+**Fila de 5.** Al crear la sala se puede elegir este tipo de juego en vez del bingo clásico. Se venden
+15 filas fijas de 5 números, uno de cada letra (la fila 1 es B-1, I-16, N-31, G-46 y O-61). Gana la
+primera fila vendida que complete sus 5 números y se lleva todo el pozo. Nadie tiene que cantar: el
+servidor lo detecta solo. Cada bola completa como mucho una fila, así que siempre hay un único ganador.
+
+**Elige tus 5.** Cada jugador arma sus jugadas con 5 números (o al azar). Gana quien complete sus 5
+primero; si varios lo hacen con la misma bola, el pozo se reparte.
+
+**Extras de la sala** (al crearla): rondas seguidas con cuenta atrás y «repetir mis jugadas», bote
+acumulado entre rondas, bola dorada (premio doble), más figuras para el clásico (L, T, X, marco y cuadro
+central). En el show: QR para unirse, narrador con frases o en inglés/portugués (botón 🗣), reacciones
+de los jugadores, repetición de la bola decisiva y ranking de la noche. En el móvil: aviso «¡te falta 1!»
+e historial de partidas.
+
 **Partida verificable.** Antes de empezar, el servidor publica el *compromiso* (SHA-256 de su semilla
 secreta). Al empezar se combinan las semillas que generan los móviles de los jugadores, y de ambas
 salen la serie de los cartones y el orden de las bolas. Al terminar se revela la semilla del servidor
