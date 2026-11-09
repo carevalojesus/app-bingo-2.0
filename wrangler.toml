@@ -9,8 +9,8 @@ routes = [{ pattern = "bingo.carevalojesus.com", custom_domain = true }]
 
 # Cloudflare Access para el panel de administración (ver docs/en-linea.md). Vacío = solo con clave.
 [vars]
-ACCESS_EQUIPO = ""   # p. ej. "carevalojesus" si tu equipo es carevalojesus.cloudflareaccess.com
-ACCESS_AUD = ""      # «Application Audience (AUD) Tag» de la aplicación de Access
+ACCESS_EQUIPO = "purple-pine-693a"   # equipo: purple-pine-693a.cloudflareaccess.com
+ACCESS_AUD = "c803f5713df3b4d9ad9847633366bb11b84743f6ac9bf420f06b6a455354bc82"   # app «Bingo Show · Panel de administración»
 
 # Archivos estáticos desde la raíz del repo (lo excluido está en .assetsignore).
 # Solo /api/* pasa primero por el Worker; lo demás va directo a los archivos.
