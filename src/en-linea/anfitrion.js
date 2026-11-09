@@ -133,11 +133,18 @@ export function iniciarAnfitrion(codigo, show) {
                 return;
             case 'ganador':
                 return celebrar(mensaje);
+            case 'cuenta':
+                return show.cuentaAtras(Number(mensaje.ms) || 4000);
             case 'dorada':
                 // Después del anuncio de la propia bola, que sale a la vez
                 return gsap.delayedCall(2.4, () => anunciarDorada(mensaje));
             case 'reaccion':
                 return flotarReaccion(mensaje.emoji, mensaje.apodo);
+            case 'solicitud':
+                if (show.sonido()) sfx.campana();
+                return show.avisar(`${mensaje.apodo} pide ${fichas(mensaje.cantidad)}`);
+            case 'vinculo':
+                return mostrarVinculo(mensaje);
             case 'aviso':
                 return show.avisar(mensaje.texto);
             case 'error':
@@ -189,6 +196,7 @@ export function iniciarAnfitrion(codigo, show) {
             show.fijarBolas(e.bolas || []);
         }
 
+        pintarMarca(e);
         show.correrReloj(fase === 'jugando');
         pintarAnillo(e);
         pintarInfo(e);
@@ -239,7 +247,17 @@ export function iniciarAnfitrion(codigo, show) {
         $('empezarBtn').addEventListener('click', () => {
             if (ultimo?.estado === 'lobby' && enviar({ tipo: 'iniciar' })) $('empezarBtn').disabled = true;
         });
+        $('vincularBtn').addEventListener('click', () => enviar({ tipo: 'vincular' }));
         $('lobbyJugadores').addEventListener('click', (ev) => {
+            const admitir = ev.target.closest('[data-admitir]');
+            if (admitir) {
+                const cantidad = Number(admitir.dataset.cantidad) || 0;
+                return enviar(cantidad > 0
+                    ? { tipo: 'darFichas', jugadorId: admitir.dataset.admitir, cantidad }
+                    : { tipo: 'admitir', jugadorId: admitir.dataset.admitir });
+            }
+            const dar = ev.target.closest('[data-dar]');
+            if (dar) return enviar({ tipo: 'darFichas', jugadorId: dar.dataset.dar, cantidad: Number(dar.dataset.cantidad) });
             const boton = ev.target.closest('[data-expulsar]');
             if (!boton) return;
             const id = boton.dataset.expulsar;
@@ -310,8 +328,17 @@ export function iniciarAnfitrion(codigo, show) {
             </li>`).join('');
 
         const jugadores = e.jugadores || [];
-        $('lobbyConectados').textContent = `${jugadores.filter((j) => j.conectado).length}/${jugadores.length}`;
-        $('lobbyJugadores').innerHTML = jugadores.length ? jugadores.map((j) => `
+        $('lobbyConectados').textContent = `${jugadores.filter((j) => j.conectado).length}/${jugadores.length}${e.pro ? '' : ` (máx. ${e.maxJugadores ?? 15})`}`;
+        const pedidos = new Map((e.solicitudes || []).map((s) => [s.jugadorId, s.cantidad]));
+        $('lobbyJugadores').innerHTML = jugadores.length ? jugadores.map((j) => j.admitido === false ? `
+            <li class="flex flex-wrap items-center gap-2 rounded-xl border-[2.5px] border-dashed border-tinta bg-papel px-3 py-2">
+                <span class="min-w-0 flex-1">
+                    <span class="block truncate font-ui font-black">${escapar(j.apodo)}</span>
+                    <span class="font-ui text-xs font-bold text-tinta/60">En espera${pedidos.has(j.id) ? ` · pide ${fichas(pedidos.get(j.id))}` : ''}</span>
+                </span>
+                <button type="button" data-admitir="${escapar(j.id)}" data-cantidad="${pedidos.get(j.id) ?? 0}" class="boton h-8 shrink-0 bg-menta px-2 text-[10px]">${pedidos.has(j.id) ? `Admitir y dar ${pedidos.get(j.id)}` : 'Admitir'}</button>
+                <button type="button" data-expulsar="${escapar(j.id)}" class="boton h-8 shrink-0 bg-crema px-2 text-[10px]">Rechazar</button>
+            </li>` : `
             <li class="flex items-center gap-3 rounded-xl border-[2.5px] border-tinta bg-white px-3 py-2 ${j.conectado ? '' : 'opacity-60'}">
                 <span class="h-3 w-3 shrink-0 rounded-full border-2 border-tinta ${j.conectado ? 'bg-menta' : 'bg-tinta/20'}" title="${j.conectado ? 'Conectado' : 'Desconectado'}"></span>
                 <span class="min-w-0 flex-1">
@@ -320,7 +347,8 @@ export function iniciarAnfitrion(codigo, show) {
                         ? j.cartones.map((n) => `<span class="rounded-md border-2 border-tinta bg-girasol px-1.5 font-display text-[11px] leading-5">${n}</span>`).join('')
                         : `<span class="font-ui text-xs font-bold text-tinta/50">${p.sin}</span>`}</span>
                 </span>
-                <span class="shrink-0 text-right font-ui text-xs font-bold text-tinta/60">${fichas(j.fichas)}</span>
+                <span class="shrink-0 text-right font-ui text-xs font-bold text-tinta/60">${fichas(j.fichas)}${pedidos.has(j.id)
+                    ? `<button type="button" data-dar="${escapar(j.id)}" data-cantidad="${pedidos.get(j.id)}" class="boton mt-1 block h-7 bg-girasol px-2 text-[10px]">Dar ${pedidos.get(j.id)}</button>` : ''}</span>
                 <button type="button" data-expulsar="${escapar(j.id)}" class="boton h-8 shrink-0 px-2 text-[10px] ${expulsarPendiente === j.id ? 'bg-tomate text-crema' : 'bg-crema'}"
                         aria-label="Expulsar a ${escapar(j.apodo)}" title="Expulsar">${expulsarPendiente === j.id ? '¿Seguro?' : '✕'}</button>
             </li>`).join('')
@@ -334,6 +362,12 @@ export function iniciarAnfitrion(codigo, show) {
         $('lobbyCompromiso').textContent = compromiso ? compromiso.slice(0, 12) : '';
 
         $('lobbyExtras').innerHTML = htmlExtras(e);
+        // Plan gratis: aviso discreto con el límite de jugadores
+        $('lobbyPlan').classList.toggle('hidden', Boolean(e.pro));
+        if (!e.pro) {
+            $('lobbyPlan').innerHTML = `<span class="font-black">Versión gratis</span> · hasta ${e.maxJugadores ?? 15} jugadores y 1 premio. `
+                + '<a href="precios.html" target="_blank" class="pointer-events-auto font-black underline">Pásate a Pro</a>';
+        }
         const cuenta = Boolean(e.inicioAutoEn);
         $('lobbyCuenta').classList.toggle('hidden', !cuenta);
         $('lobbyCuenta').classList.toggle('flex', cuenta);
@@ -366,6 +400,22 @@ export function iniciarAnfitrion(codigo, show) {
                 <span class="font-display text-lg">${e.dorada ? escapar(`${show.columnaDe(e.dorada).letra}-${e.dorada}`) : '¿?'}</span></${tag}>`);
         }
         return filas.join('');
+    }
+
+    // Logo del evento (Pro): en la cabecera y en el lobby. La imagen se pide aparte, no viaja en el estado.
+    let logoPintado = null;
+    function pintarMarca(e) {
+        if (e.logo === logoPintado) return;
+        logoPintado = e.logo;
+        const src = e.logo ? `/api/salas/${codigo}/logo?v=${encodeURIComponent(e.logo)}` : '';
+        for (const id of ['marcaLogo', 'lobbyLogo']) {
+            const img = $(id);
+            img.classList.toggle('hidden', !src);
+            if (src) {
+                img.src = src;
+                img.alt = `Logo de ${e.nombre || 'el evento'}`;
+            } else img.removeAttribute('src');
+        }
     }
 
     function pintarInfo(e) {
@@ -477,6 +527,28 @@ export function iniciarAnfitrion(codigo, show) {
         el.style.left = `${8 + Math.random() * 55}%`;
         document.body.append(el);
         setTimeout(() => el.remove(), 3200);
+    }
+
+    // Código para manejar la sala desde el móvil: se muestra en grande, vale 2 minutos y un solo uso
+    function mostrarVinculo({ codigo: cifras, expira }) {
+        document.querySelector('.vinculo-capa')?.remove();
+        const url = `${location.origin}/anfitrion.html?sala=${codigo}`;
+        const capa = document.createElement('div');
+        capa.className = 'vinculo-capa';
+        capa.innerHTML = `<div class="carta w-full max-w-sm p-5 text-center" role="dialog" aria-modal="true" aria-label="Controlar desde el móvil">
+            <p class="font-display text-2xl">Controla la sala desde tu móvil</p>
+            <div class="mx-auto mt-3 h-36 w-36 rounded-xl border-[3px] border-tinta bg-white p-1.5 [&>svg]:h-full [&>svg]:w-full">${svgQr(url)}</div>
+            <p class="mt-2 break-all font-ui text-xs font-bold text-tinta/70">${escapar(url)}</p>
+            <p class="etiqueta mt-3">Escribe este código en el móvil</p>
+            <p class="font-display text-5xl tracking-[0.2em]">${escapar(cifras)}</p>
+            <p class="mt-2 font-ui text-xs font-bold text-tinta/70">Vale <span data-hasta="${expira}">${segundosHasta(expira)}</span> s y una sola vez. No lo dejes a la vista del público.</p>
+            <button type="button" class="boton mt-4 h-11 w-full bg-crema">Cerrar</button>
+        </div>`;
+        document.body.append(capa);
+        const cerrar = () => capa.remove();
+        capa.querySelector('button').addEventListener('click', cerrar);
+        capa.addEventListener('click', (ev) => { if (ev.target === capa) cerrar(); });
+        setTimeout(cerrar, Math.max(0, expira - Date.now()) + 500);
     }
 
     // Repetición de la bola decisiva a cámara lenta antes de la celebración

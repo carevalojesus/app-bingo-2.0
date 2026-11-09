@@ -7,13 +7,14 @@
 // Si el puerto lo ocupa otra cosa, falla con un mensaje claro.
 
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import assert from 'node:assert/strict';
 import { generarCarton, verificar } from '../src/carton.js';
 import { nuevaSemilla, verificarPartida } from '../src/justo.js';
 import { numerosDeFila } from '../src/filas.js';
+import { generarCodigoPro } from '../src/codigos.js';
 
 const PUERTO = Number(process.env.PUERTO || 8787);
 const BASE = `http://localhost:${PUERTO}`;
@@ -22,6 +23,19 @@ const raiz = new URL('..', import.meta.url).pathname;
 // Cada ejecución simula su propia IP (x-prueba-ip, solo en modo prueba) para no chocar con el
 // límite de salas por hora si se reutiliza un servidor ya arrancado
 const IP_PRUEBA = `e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+// Secretos: los de .dev.vars (wrangler dev los carga) o unos de prueba
+function secreto(nombre, porDefecto) {
+    if (process.env[nombre]) return process.env[nombre];
+    try {
+        const m = readFileSync(join(new URL('..', import.meta.url).pathname, '.dev.vars'), 'utf8').match(new RegExp(`^${nombre}\\s*=\\s*"?([^"\\n]+)"?`, 'm'));
+        if (m) return m[1].trim();
+    } catch { /* sin .dev.vars */ }
+    return porDefecto;
+}
+const CLAVE_CODIGOS = secreto('CODIGOS_SECRETO', 'e2e0'.repeat(16));
+const CLAVE_ADMIN = secreto('ADMIN_CLAVE', 'clave-admin-e2e');
+const codigoPro = (opciones) => generarCodigoPro(CLAVE_CODIGOS, opciones).codigo;
 
 let wrangler = null;
 let carpetaEstado = null;
@@ -47,7 +61,8 @@ async function prepararServidor() {
 
     carpetaEstado = mkdtempSync(join(tmpdir(), 'bingo-e2e-'));
     console.log(`Arrancando wrangler dev en ${BASE}…`);
-    wrangler = spawn('npx', ['wrangler', 'dev', '--var', 'MODO_PRUEBA:1', '--port', String(PUERTO), '--persist-to', carpetaEstado], {
+    wrangler = spawn('npx', ['wrangler', 'dev', '--var', 'MODO_PRUEBA:1', '--var', `CODIGOS_SECRETO:${CLAVE_CODIGOS}`, '--var', `ADMIN_CLAVE:${CLAVE_ADMIN}`,
+        '--port', String(PUERTO), '--persist-to', carpetaEstado], {
         cwd: raiz, stdio: ['ignore', 'pipe', 'pipe'], detached: true,
     });
     let salida = '';
@@ -195,6 +210,7 @@ async function principal() {
     const config = {
         nombre: 'Prueba E2E', cartones: 10, precioCarton: 10, maxCartonesPorJugador: 3, fichasIniciales: 25,
         intervalo: 150, pozoExtra: 5, premios: [{ modalidad: 'linea', porcentaje: 30 }, { modalidad: 'lleno', porcentaje: 70 }],
+        codigoPro: codigoPro(), // dos premios: hace falta el plan Pro
     };
     const creada = await pedir('/api/salas', { method: 'POST', body: JSON.stringify(config) });
     assert.equal(creada.status, 201);
@@ -203,7 +219,7 @@ async function principal() {
     assert.match(tokenAnfitrion, /^[0-9a-f]{32}$/);
     const info = await pedir(`/api/salas/${codigo.toLowerCase()}`);
     assert.equal(info.status, 200);
-    assert.deepEqual({ ...info.datos, config: undefined }, { codigo, nombre: 'Prueba E2E', estado: 'lobby', jugadores: 0, config: undefined });
+    assert.deepEqual({ ...info.datos, config: undefined }, { codigo, nombre: 'Prueba E2E', estado: 'lobby', jugadores: 0, pro: true, logo: null, config: undefined });
     assert.equal(info.datos.config.intervalo, 150);
     assert.equal((await pedir('/api/salas/AAAAAA')).status, 404);
     assert.equal((await fetch(`${BASE}/api/salas/${codigo}/ws`)).status, 426);
@@ -420,12 +436,15 @@ async function principal() {
     await reacciones();
     await limiteDeSalas();
     await caducidad();
+    await planes();
+    await administracion();
+    await admisionYVinculo();
     console.log('\nE2E OK');
 }
 
 // ---------- Modos y extras ----------
-async function nuevaSalaE2E(config) {
-    const r = await pedir('/api/salas', { method: 'POST', body: JSON.stringify({ intervalo: 150, ...config }) });
+async function nuevaSalaE2E(config, ip = IP_PRUEBA) {
+    const r = await pedir('/api/salas', { method: 'POST', body: JSON.stringify({ intervalo: 150, ...config }), headers: { 'x-prueba-ip': ip } });
     assert.equal(r.status, 201, JSON.stringify(r.datos));
     return r.datos;
 }
@@ -566,6 +585,143 @@ async function limiteDeSalas() {
     assert.match((await r.json()).error, /demasiadas salas/);
     assert.equal((await pedir('/api/salas', { method: 'POST', body: '{}' })).status, 201, 'otra IP sí puede');
     paso('límite: 10 salas por hora e IP (429 con Retry-After); los formularios con errores no cuentan');
+}
+
+// PNG de 1×1 px
+const LOGO = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+async function planes() {
+    // IP propia: los códigos falsos gastan cupo del límite por hora
+    const ip = `planes-${IP_PRUEBA}`;
+    const crear = (config) => pedir('/api/salas', { method: 'POST', body: JSON.stringify(config), headers: { 'x-prueba-ip': ip } });
+    const dosPremios = { premios: [{ modalidad: 'linea', porcentaje: 30 }, { modalidad: 'lleno', porcentaje: 70 }] };
+    const sinCodigo = await crear(dosPremios);
+    assert.equal(sinCodigo.status, 400);
+    assert.match(sinCodigo.datos.error, /plan gratis incluye 1 premio/);
+    const falso = await crear({ codigoPro: 'PRO-000000-000000-000000' });
+    assert.equal(falso.status, 400);
+    assert.match(falso.datos.error, /no es válido/);
+    const caducado = codigoPro({ ahora: Date.now() - 3 * 864e5 });
+    assert.match((await crear({ codigoPro: caducado })).datos.error, /caducó/);
+    const logoGratis = await crear({ logo: LOGO });
+    assert.equal(logoGratis.status, 400);
+    assert.match(logoGratis.datos.error, /plan Pro/);
+
+    // Gratis: 15 jugadores como máximo
+    const gratis = await nuevaSalaE2E({ tipo: 'fila' }, ip);
+    const { anfitrion, jugadores } = await conectar(gratis.codigo, gratis.tokenAnfitrion, Array.from({ length: 15 }, (_, i) => `J${i + 1}`));
+    assert.equal(anfitrion.estado.pro, false);
+    const decimosexto = new Cliente('J16', gratis.codigo);
+    await decimosexto.abrir({ rol: 'jugador', apodo: 'J16', semilla: nuevaSemilla(16) });
+    await decimosexto.esperar((m) => m.tipo === 'error' && /plan gratis admite 15/.test(m.mensaje), 'sala llena en el plan gratis');
+    cerrarTodos(anfitrion, jugadores, decimosexto);
+
+    // Pro: dos premios y logo, que se sirve aparte
+    const pro = await nuevaSalaE2E({ ...dosPremios, codigoPro: codigoPro().toLowerCase().replace(/-/g, ' '), logo: LOGO }, ip);
+    assert.equal(pro.pro, true);
+    const info = await pedir(`/api/salas/${pro.codigo}`);
+    assert.equal(info.datos.pro, true);
+    assert.match(info.datos.logo, /^[0-9a-f]{8}$/);
+    const imagen = await fetch(`${BASE}/api/salas/${pro.codigo}/logo?v=${info.datos.logo}`);
+    assert.equal(imagen.status, 200);
+    assert.equal(imagen.headers.get('content-type'), 'image/png');
+    assert.deepEqual(Buffer.from(await imagen.arrayBuffer()), Buffer.from(LOGO.split(',')[1], 'base64'));
+    assert.equal((await fetch(`${BASE}/api/salas/${gratis.codigo}/logo`)).status, 404, 'sin logo: 404');
+    paso('planes: gratis con 15 jugadores y 1 premio; código Pro (falso, caducado, bien) y logo del evento');
+}
+
+async function administracion() {
+    const ip = `admin-${IP_PRUEBA}`;
+    const llamar = (ruta, { clave = CLAVE_ADMIN, ...opciones } = {}) => pedir(ruta, {
+        ...opciones, headers: { 'x-prueba-ip': ip, authorization: `Bearer ${clave}`, ...(opciones.headers || {}) },
+    });
+    assert.equal((await llamar('/api/admin/resumen', { clave: 'mala' })).status, 401);
+    assert.equal((await pedir('/api/admin/resumen', { headers: { 'x-prueba-ip': ip } })).status, 401, 'sin clave');
+
+    const emitido = await llamar('/api/admin/codigos', { method: 'POST', body: JSON.stringify({ plan: 'evento', nota: 'Kermés E2E', cliente: '51 987-654-321' }) });
+    assert.equal(emitido.status, 201);
+    assert.equal(emitido.datos.importe, 25);
+    assert.equal(emitido.datos.cliente, '51987654321');
+    assert.ok(emitido.datos.hasta - Date.now() > 23.9 * 3600e3, 'un código de evento vale 24 h');
+    assert.equal((await llamar('/api/admin/codigos', { method: 'POST', body: JSON.stringify({ plan: 'oro' }) })).status, 400);
+
+    // Se usa para crear una sala y aparece en el registro con esa sala
+    const sala = await nuevaSalaE2E({ codigoPro: emitido.datos.codigo }, `uso-${IP_PRUEBA}`);
+    let resumen = (await llamar('/api/admin/resumen')).datos;
+    const registrado = resumen.codigos.find((c) => c.codigo === emitido.datos.codigo);
+    assert.deepEqual(registrado.salas.map((s) => s.sala), [sala.codigo]);
+    assert.ok(resumen.dias.at(-1).pro >= 1, 'las salas Pro de hoy se cuentan');
+    assert.equal(resumen.dias.length, 30);
+
+    // Un código generado en la terminal se registra al usarse (origen externo)
+    const externo = codigoPro({ dias: 30, tipo: 2 });
+    await nuevaSalaE2E({ codigoPro: externo }, `uso-${IP_PRUEBA}`);
+    resumen = (await llamar('/api/admin/resumen')).datos;
+    assert.equal(resumen.codigos.find((c) => c.codigo === externo)?.origen, 'externo');
+
+    // Anular: ya no sirve; reactivar: vuelve a servir
+    assert.equal((await llamar('/api/admin/codigos/anular', { method: 'POST', body: JSON.stringify({ codigo: emitido.datos.codigo }) })).datos.revocado, true);
+    const rechazada = await pedir('/api/salas', { method: 'POST', body: JSON.stringify({ codigoPro: emitido.datos.codigo }), headers: { 'x-prueba-ip': `uso-${IP_PRUEBA}` } });
+    assert.equal(rechazada.status, 400);
+    assert.match(rechazada.datos.error, /anulado/);
+    await llamar('/api/admin/codigos/anular', { method: 'POST', body: JSON.stringify({ codigo: emitido.datos.codigo, anulado: false }) });
+    assert.equal((await nuevaSalaE2E({ codigoPro: emitido.datos.codigo }, `uso2-${IP_PRUEBA}`)).pro, true);
+
+    // Muchas claves falsas: la IP queda bloqueada un rato
+    const bloqueo = `fuerza-${IP_PRUEBA}`;
+    for (let i = 0; i < 10; i++) assert.equal((await pedir('/api/admin/resumen', { headers: { 'x-prueba-ip': bloqueo, authorization: 'Bearer x' } })).status, 401);
+    assert.equal((await pedir('/api/admin/resumen', { headers: { 'x-prueba-ip': bloqueo, authorization: `Bearer ${CLAVE_ADMIN}` } })).status, 429);
+    paso('administración: clave, emitir y registrar códigos, uso por sala, anular/reactivar y bloqueo por intentos');
+}
+
+async function admisionYVinculo() {
+    const { codigo, tokenAnfitrion } = await nuevaSalaE2E({ admision: true, fichasIniciales: 0, precioCarton: 10, mensajeFichas: 'Pide en la mesa' }, `adm-${IP_PRUEBA}`);
+    const anfitrion = new Cliente('anfitrión', codigo);
+    await anfitrion.abrir({ rol: 'anfitrion', token: tokenAnfitrion });
+    await anfitrion.esperar('bienvenida');
+    const ana = new Cliente('Ana', codigo);
+    await ana.abrir({ rol: 'jugador', apodo: 'Ana', semilla: nuevaSemilla(16) });
+    const bienvenida = await ana.esperar('bienvenida');
+    ana.id = bienvenida.jugadorId;
+    const yo = bienvenida.estado.jugadores.find((j) => j.id === ana.id);
+    assert.deepEqual([yo.admitido, yo.fichas], [false, 0], 'entra en espera y sin fichas');
+    assert.equal(bienvenida.estado.config.mensajeFichas, 'Pide en la mesa');
+
+    ana.enviar({ tipo: 'elegirCarton', numero: 1 });
+    await ana.esperar((m) => m.tipo === 'error' && /admita/.test(m.mensaje), 'no puede elegir en espera');
+    ana.enviar({ tipo: 'pedirFichas', cantidad: 30 });
+    const solicitud = await anfitrion.esperar('solicitud', 'el anfitrión recibe el pedido');
+    assert.deepEqual([solicitud.apodo, solicitud.cantidad], ['Ana', 30]);
+    await anfitrion.esperarEstado((e) => e.solicitudes?.length === 1, 'pedido en el estado del anfitrión');
+    assert.ok(!ana.mensajes.some((m) => m.tipo === 'solicitud'), 'los jugadores no ven los pedidos');
+    assert.equal(ana.estado.solicitudes, undefined);
+
+    anfitrion.enviar({ tipo: 'darFichas', jugadorId: ana.id, cantidad: 30 });
+    const fichas = await ana.esperar('fichas', 'Ana recibe sus fichas');
+    assert.deepEqual([fichas.cantidad, fichas.saldo], [30, 30]);
+    const conRegistro = await anfitrion.esperarEstado((e) => e.movimientos?.length === 1, 'registro del anfitrión');
+    assert.deepEqual(conRegistro.estado.movimientos.map((m) => [m.apodo, m.cantidad]), [['Ana', 30]]);
+    assert.equal(ana.estado.movimientos, undefined, 'el registro no llega a los jugadores');
+    ana.enviar({ tipo: 'elegirCarton', numero: 1 });
+    await ana.esperarEstado((e) => e.ocupados[1] === ana.id, 'ya admitida, compra su cartón');
+
+    // Vincular otro móvil como anfitrión con el código de 6 cifras
+    anfitrion.enviar({ tipo: 'vincular' });
+    const { codigo: cifras } = await anfitrion.esperar('vinculo', 'código de vinculación');
+    assert.ok(!ana.mensajes.some((m) => m.tipo === 'vinculo'), 'el código solo lo ve el anfitrión');
+    const vincular = (c) => pedir(`/api/salas/${codigo}/vincular`, { method: 'POST', body: JSON.stringify({ codigo: c }) });
+    assert.equal((await vincular(cifras === '000000' ? '111111' : '000000')).status, 400);
+    const bien = await vincular(cifras);
+    assert.equal(bien.status, 200);
+    assert.equal(bien.datos.tokenAnfitrion, tokenAnfitrion);
+    assert.equal((await vincular(cifras)).status, 400, 'un solo uso');
+    const movil = new Cliente('móvil del anfitrión', codigo);
+    await movil.abrir({ rol: 'anfitrion', token: bien.datos.tokenAnfitrion });
+    assert.equal((await movil.esperar('bienvenida')).rol, 'anfitrion');
+    movil.enviar({ tipo: 'darFichas', jugadorId: ana.id, cantidad: -5 });
+    await ana.esperar((m) => m.tipo === 'fichas' && m.cantidad === -5, 'corrección desde el móvil');
+    cerrarTodos(anfitrion, ana, movil);
+    paso('admisión: en espera, pedido de fichas solo al anfitrión, asignación con registro privado; vincular un móvil (un solo uso)');
 }
 
 async function caducidad() {

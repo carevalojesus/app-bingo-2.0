@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Precios · Bingo Show</title>
+    <meta name="description" content="Bingo Show gratis hasta 15 jugadores. Plan Pro por evento o por mes: hasta 100 jugadores, 3 premios y el logo de tu evento.">
+    <meta name="theme-color" content="#1a0d36">
+    <link rel="stylesheet" href="dist/styles.css">
+</head>
+<!-- Contacto para comprar: pon aquí el número de WhatsApp con código de país, solo dígitos (p. ej. 51987654321).
+     Si está vacío, los botones de compra no se muestran. -->
+<body class="min-h-screen bg-escenario font-ui text-tinta antialiased" data-whatsapp="51933240664">
+
+<header class="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 pt-6 sm:px-6">
+    <a href="index.html" class="flex items-center gap-3" aria-label="Bingo Show: volver al show">
+        <div class="flex gap-1" aria-hidden="true">
+            <span class="logo-ficha bg-tomate" style="transform:rotate(-6deg)">B</span>
+            <span class="logo-ficha bg-girasol" style="transform:rotate(4deg)">I</span>
+            <span class="logo-ficha bg-menta" style="transform:rotate(-3deg)">N</span>
+            <span class="logo-ficha bg-cobalto text-crema" style="transform:rotate(6deg)">G</span>
+            <span class="logo-ficha bg-fucsia" style="transform:rotate(-5deg)">O</span>
+        </div>
+        <span class="font-display text-xl text-crema sm:text-3xl">Precios</span>
+    </a>
+    <a href="sala.html" class="boton h-11 bg-crema px-4 text-sm">Crear sala</a>
+</header>
+
+<main class="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+    <section class="text-center">
+        <h1 class="font-display text-3xl leading-tight text-crema sm:text-5xl">Tu bingo, en la pantalla grande</h1>
+        <p class="mx-auto mt-3 max-w-2xl text-base font-bold text-crema/80 sm:text-lg">
+            Proyecta el show con el bombo 3D y que cada invitado juegue desde su móvil. Empieza gratis; para eventos grandes, pásate a Pro.
+        </p>
+    </section>
+
+    <section class="mt-8 grid gap-5 md:grid-cols-3" aria-label="Planes">
+        <article class="carta flex flex-col p-5">
+            <h2 class="font-display text-2xl">Gratis</h2>
+            <p class="mt-1 text-sm font-bold text-tinta/70">Para probar y para reuniones pequeñas.</p>
+            <p class="mt-4 font-display text-4xl">S/ 0</p>
+            <ul class="mt-4 grid flex-1 content-start gap-2 text-sm font-bold">
+                <li>✓ Hasta <b>15 jugadores</b> por sala</li>
+                <li>✓ <b>1 premio</b> por partida</li>
+                <li>✓ Bingo clásico, Fila de 5 y Elige tus 5</li>
+                <li>✓ Rondas seguidas, bote y bola dorada</li>
+                <li>✓ Tú admites a los jugadores y les das las fichas</li>
+                <li>✓ Control de la sala desde tu móvil</li>
+                <li>✓ Show sin conexión y cartones para imprimir</li>
+            </ul>
+            <a href="sala.html" class="boton mt-5 h-12 w-full bg-crema">Crear sala gratis</a>
+        </article>
+
+        <article class="carta relative flex flex-col border-[4px] p-5 shadow-duro-lg">
+            <span class="absolute -top-4 left-1/2 -translate-x-1/2 rounded-full border-[3px] border-tinta bg-tomate px-3 py-0.5 font-display text-xs text-crema">El más pedido</span>
+            <h2 class="font-display text-2xl">Pro · Evento</h2>
+            <p class="mt-1 text-sm font-bold text-tinta/70">Para una fiesta, una kermés o un evento de empresa.</p>
+            <p class="mt-4 font-display text-4xl">S/ 25 <span class="font-ui text-base font-black text-tinta/60">/ evento</span></p>
+            <p class="text-xs font-black uppercase tracking-wide text-tinta/60">Código válido 24 horas</p>
+            <ul class="mt-4 grid flex-1 content-start gap-2 text-sm font-bold">
+                <li>✓ Hasta <b>100 jugadores</b> por sala</li>
+                <li>✓ Hasta <b>3 premios</b> encadenados</li>
+                <li>✓ <b>El logo de tu evento</b> en el show y en los móviles</li>
+                <li>✓ Sin el aviso de «versión gratis»</li>
+                <li>✓ Todas las salas que quieras durante esas 24 h</li>
+            </ul>
+            <a data-comprar="evento" href="#como-comprar" class="boton mt-5 h-12 w-full bg-girasol">Comprar evento</a>
+        </article>
+
+        <article class="carta flex flex-col p-5">
+            <h2 class="font-display text-2xl">Pro · Mensual</h2>
+            <p class="mt-1 text-sm font-bold text-tinta/70">Para animadores, colegios y quien organiza a menudo.</p>
+            <p class="mt-4 font-display text-4xl">S/ 60 <span class="font-ui text-base font-black text-tinta/60">/ mes</span></p>
+            <p class="text-xs font-black uppercase tracking-wide text-tinta/60">Código válido 30 días</p>
+            <ul class="mt-4 grid flex-1 content-start gap-2 text-sm font-bold">
+                <li>✓ Todo lo del plan Evento</li>
+                <li>✓ <b>Salas ilimitadas durante 30 días</b></li>
+                <li>✓ Ideal desde 3 eventos al mes</li>
+            </ul>
+            <a data-comprar="mensual" href="#como-comprar" class="boton mt-5 h-12 w-full bg-menta">Comprar mes</a>
+        </article>
+    </section>
+
+    <section id="como-comprar" class="carta mt-8 p-5 sm:p-6">
+        <h2 class="font-display text-2xl">Cómo comprar</h2>
+        <ol class="mt-4 grid gap-4 sm:grid-cols-3">
+            <li class="rounded-2xl border-[3px] border-tinta bg-white p-4">
+                <span class="grid h-9 w-9 place-items-center rounded-lg border-[2.5px] border-tinta bg-girasol font-display">1</span>
+                <p class="mt-2 font-black">Escríbenos</p>
+                <p class="text-sm font-bold text-tinta/70">Dinos qué plan quieres y para qué fecha es tu evento.</p>
+            </li>
+            <li class="rounded-2xl border-[3px] border-tinta bg-white p-4">
+                <span class="grid h-9 w-9 place-items-center rounded-lg border-[2.5px] border-tinta bg-girasol font-display">2</span>
+                <p class="mt-2 font-black">Paga</p>
+                <p class="text-sm font-bold text-tinta/70">Por Yape, Plin o transferencia.</p>
+            </li>
+            <li class="rounded-2xl border-[3px] border-tinta bg-white p-4">
+                <span class="grid h-9 w-9 place-items-center rounded-lg border-[2.5px] border-tinta bg-girasol font-display">3</span>
+                <p class="mt-2 font-black">Recibe tu código</p>
+                <p class="text-sm font-bold text-tinta/70">Escríbelo al crear la sala en «Código Pro» y listo.</p>
+            </li>
+        </ol>
+        <p id="sinContacto" class="mt-4 rounded-xl border-[2.5px] border-tinta bg-papel px-3 py-2 text-sm font-black">
+            Muy pronto podrás comprar desde aquí.
+        </p>
+        <a id="botonWhatsapp" href="#" target="_blank" rel="noopener" class="boton mt-4 hidden h-12 bg-menta px-5">Pedir mi código por WhatsApp</a>
+    </section>
+
+    <section class="carta mt-8 p-5 sm:p-6">
+        <h2 class="font-display text-2xl">Preguntas frecuentes</h2>
+        <dl class="mt-4 grid gap-4 sm:grid-cols-2">
+            <div>
+                <dt class="font-black">¿Los jugadores pagan algo?</dt>
+                <dd class="text-sm font-bold text-tinta/70">En la app, no: las fichas son virtuales y Bingo Show no cobra a los jugadores ni paga premios. Si el organizador reparte fichas a cambio de algo fuera de la app, es responsabilidad suya (<a href="terminos.html" class="underline">términos de uso</a>).</dd>
+            </div>
+            <div>
+                <dt class="font-black">¿Cuándo empieza a contar el código?</dt>
+                <dd class="text-sm font-bold text-tinta/70">Desde que te lo enviamos: el de evento vale 24 horas y el mensual, 30 días. Pídelo el mismo día de tu evento.</dd>
+            </div>
+            <div>
+                <dt class="font-black">¿Qué pasa si mi código caduca a mitad de la fiesta?</dt>
+                <dd class="text-sm font-bold text-tinta/70">Nada: una sala creada con un código Pro sigue siendo Pro hasta que la cierres.</dd>
+            </div>
+            <div>
+                <dt class="font-black">¿Necesito instalar algo?</dt>
+                <dd class="text-sm font-bold text-tinta/70">No. El show se abre en el navegador del ordenador que proyectas y los invitados entran escaneando el QR.</dd>
+            </div>
+        </dl>
+    </section>
+</main>
+
+<script>
+    // Botones de compra: abren WhatsApp con el plan ya escrito (solo si hay número configurado arriba)
+    (function () {
+        var numero = (document.body.dataset.whatsapp || '').replace(/\D/g, '');
+        var mensajes = {
+            evento: 'Hola, quiero un código Pro de Bingo Show por evento (S/ 25). Mi evento es el día: ',
+            mensual: 'Hola, quiero el plan Pro mensual de Bingo Show (S/ 60).',
+        };
+        var enlace = function (texto) { return 'https://wa.me/' + numero + '?text=' + encodeURIComponent(texto); };
+        if (!numero) {
+            document.querySelectorAll('[data-comprar]').forEach(function (a) { a.textContent = 'Muy pronto'; a.setAttribute('aria-disabled', 'true'); });
+            return;
+        }
+        document.getElementById('sinContacto').classList.add('hidden');
+        var boton = document.getElementById('botonWhatsapp');
+        boton.href = enlace('Hola, quiero un código Pro de Bingo Show.');
+        boton.classList.remove('hidden');
+        document.querySelectorAll('[data-comprar]').forEach(function (a) {
+            a.href = enlace(mensajes[a.dataset.comprar]);
+            a.target = '_blank';
+            a.rel = 'noopener';
+        });
+    })();
+</script>
+</body>
+</html>

@@ -20,8 +20,10 @@ function azarDirigido(cola = []) {
 const numerosDe = (carton) => carton.columnas.flat().filter((n) => n !== null);
 const primeraFila = (carton) => carton.columnas.map((col) => col[0]);
 
-function nuevaSala(config = {}, azar = azarDirigido()) {
-    const sala = juego.crearSala('K7Q2XM', config, { prueba: false, azar });
+// Por defecto las pruebas usan salas Pro (sin límites); las del plan gratis lo piden con `pro: null`
+const PRO = { tipo: 'evento', hasta: Date.UTC(2099, 0, 1) };
+function nuevaSala(config = {}, azar = azarDirigido(), { pro = PRO } = {}) {
+    const sala = juego.crearSala('K7Q2XM', config, { prueba: false, azar, pro, cuenta: 0 });
     const unir = (apodo, semilla) => juego.unirJugador(sala, { apodo, semilla }, azar).jugador;
     return { sala, azar, unir };
 }
@@ -52,10 +54,11 @@ function sacar(sala, azar, numeros) {
 }
 
 test('configuración: valores por defecto y validación', () => {
-    const config = juego.validarConfig({});
+    const config = juego.validarConfig({}, { pro: true });
     assert.equal(config.cartones, 60);
     assert.equal(config.intervalo, 8000);
     assert.deepEqual(config.premios.map((p) => p.modalidad), ['linea', 'lleno']);
+    assert.deepEqual(juego.validarConfig({}).premios, [{ modalidad: 'lleno', porcentaje: 100 }], 'plan gratis: cartón lleno');
     assert.equal(juego.validarConfig({ nombre: '  <b>Viernes</b> ' }).nombre, 'bViernes/b');
     assert.throws(() => juego.validarConfig({ cartones: 5 }), juego.ErrorJuego);
     assert.throws(() => juego.validarConfig({ intervalo: 5000 }), juego.ErrorJuego);
@@ -301,13 +304,16 @@ test('la instantánea nunca contiene tokens ni el registro interno', () => {
     const vista = juego.instantanea(sala);
     assert.deepEqual(Object.keys(vista).sort(), [
         'anfitrionConectado', 'aporteRonda', 'bolas', 'bote', 'codigo', 'config', 'dorada', 'doradaSalio', 'estado',
-        'inicioAutoEn', 'jugadas', 'jugadores', 'justo', 'nombre', 'ocupados', 'pozo', 'premioActual', 'premios',
-        'ronda', 'serie', 'siguienteBolaEn', 'siguienteRondaEn', 'ventanaHasta',
+        'inicioAutoEn', 'jugadas', 'jugadores', 'justo', 'logo', 'maxJugadores', 'nombre', 'ocupados', 'pozo',
+        'premioActual', 'premios', 'pro', 'ronda', 'serie', 'siguienteBolaEn', 'siguienteRondaEn', 'ventanaHasta',
     ]);
     assert.ok(!texto.includes(sala.semillaServidor), 'la semilla del servidor no se publica durante la partida');
     for (const j of sala.jugadores) assert.ok(!JSON.stringify(vista.jugadores).includes(j.semilla));
     assert.deepEqual(vista.ocupados, { 1: ids.Ana, 2: ids.Beto });
-    assert.deepEqual(Object.keys(vista.jugadores[0]).sort(), ['apodo', 'cartones', 'conectado', 'fichas', 'ganado', 'id', 'repetir']);
+    assert.deepEqual(Object.keys(vista.jugadores[0]).sort(), ['admitido', 'apodo', 'cartones', 'conectado', 'fichas', 'ganado', 'id', 'repetir']);
+    assert.equal(vista.movimientos, undefined, 'el registro de fichas no llega a los jugadores');
+    assert.equal(vista.solicitudes, undefined);
+    assert.ok(!JSON.stringify(vista).includes('vinculo'));
     assert.ok(!Object.keys(vista.jugadores[0]).includes('ultimos'));
     vista.jugadores[0].fichas = -1;
     assert.notEqual(sala.jugadores[0].fichas, -1, 'la instantánea es una copia');
@@ -333,7 +339,7 @@ test('permisos: un jugador no puede iniciar ni el anfitrión cantar bingo', () =
 
 test('partida verificable: compromiso en el lobby, semilla secreta hasta terminar y verificarPartida', () => {
     // Azar real (sin inyectar): la serie y las bolas salen de las semillas
-    const sala = juego.crearSala('K7Q2XM', { premios: [{ modalidad: 'lleno', porcentaje: 100 }] });
+    const sala = juego.crearSala('K7Q2XM', { premios: [{ modalidad: 'lleno', porcentaje: 100 }] }, { cuenta: 0 });
     let vista = juego.instantanea(sala);
     assert.match(vista.justo.compromiso, /^[0-9a-f]{64}$/);
     assert.equal(vista.justo.compromiso, compromisoDe(sala.semillaServidor));
@@ -378,7 +384,7 @@ test('partida verificable: compromiso en el lobby, semilla secreta hasta termina
 
 test('sala guardada sin orden (versión anterior): se reconstruye desde las semillas o termina limpia', () => {
     // Azar real: el orden reconstruido tiene que ser el comprometido
-    const sala = juego.crearSala('K7Q2XM', { premios: [{ modalidad: 'lleno', porcentaje: 100 }] });
+    const sala = juego.crearSala('K7Q2XM', { premios: [{ modalidad: 'lleno', porcentaje: 100 }] }, { cuenta: 0 });
     const ana = juego.unirJugador(sala, { apodo: 'Ana', semilla: nuevaSemilla(16) }).jugador;
     juego.elegirCarton(sala, ana.id, 1);
     juego.iniciar(sala, 0);
@@ -409,8 +415,11 @@ test('sala guardada sin orden (versión anterior): se reconstruye desde las semi
     assert.throws(() => juego.sacarBola(vieja, 0), juego.ErrorJuego);
 
     // Un orden que no cuadra con las bolas ya salidas tampoco se acepta
+    // (sin la semilla de los jugadores, para que tampoco se pueda reconstruir: si no, 1 de cada 75
+    // veces el orden recalculado coincidiría con la bola dirigida y la prueba fallaría al azar)
     const rara = salaJugando({ Ana: [1] }).sala;
     rara.orden = [...rara.orden].reverse();
+    rara.justo.semillaClientes = null;
     assert.equal(juego.sanear(rara)[0].tipo, 'aviso');
     assert.equal(rara.estado, 'terminada');
 
@@ -590,4 +599,116 @@ test('verificación con bola dorada: la publicada sale de las semillas y una fal
     assert.equal(verificarPartida({ ...datos, dorada: vista.dorada }).valida, true);
     const falsa = vista.dorada === 75 ? 74 : vista.dorada + 1;
     assert.match(verificarPartida({ ...datos, dorada: falsa }).errores.join(' '), /bola dorada/);
+});
+
+// ---------- Planes ----------
+test('plan gratis: 1 premio y 15 jugadores; el Pro desbloquea 3 premios y 100 jugadores', () => {
+    const dos = { premios: [{ modalidad: 'linea', porcentaje: 30 }, { modalidad: 'lleno', porcentaje: 70 }] };
+    assert.throws(() => nuevaSala(dos, azarDirigido(), { pro: null }), /plan gratis incluye 1 premio/);
+    const { sala, unir } = nuevaSala({}, azarDirigido(), { pro: null });
+    assert.equal(sala.pro, null);
+    assert.equal(juego.instantanea(sala).maxJugadores, 15);
+    for (let i = 1; i <= 15; i++) unir(`J${i}`);
+    assert.throws(() => unir('J16'), /plan gratis admite 15/);
+
+    const pro = nuevaSala(dos);
+    assert.equal(juego.instantanea(pro.sala).pro, true);
+    assert.equal(juego.instantanea(pro.sala).maxJugadores, 100);
+    for (let i = 1; i <= 16; i++) pro.unir(`J${i}`);
+    assert.equal(pro.sala.jugadores.length, 16);
+});
+
+test('plan: las salas guardadas antes de los planes conservan sus límites', () => {
+    const { sala } = nuevaSala();
+    delete sala.pro;
+    juego.sanear(sala);
+    assert.equal(juego.instantanea(sala).pro, true);
+});
+
+// ---------- Cuenta atrás y forma de marcar ----------
+test('cuenta atrás: al empezar no sale bola hasta que termina', () => {
+    const { sala, unir, azar } = nuevaSala({}, azarDirigido([7, 8]));
+    sala.cuentaInicio = juego.CUENTA_INICIO;
+    juego.elegirCarton(sala, unir('Ana').id, 1);
+    const eventos = juego.iniciar(sala, 1000, azar);
+    assert.deepEqual(eventos.map((e) => e.tipo), ['aviso', 'cuenta']);
+    assert.equal(eventos[1].ms, juego.CUENTA_INICIO);
+    assert.equal(sala.bolas.length, 0);
+    assert.equal(juego.proximoEvento(sala), 1000 + juego.CUENTA_INICIO);
+    assert.equal(juego.avanzar(sala, 1000 + juego.CUENTA_INICIO - 1), null);
+    assert.equal(juego.avanzar(sala, 1000 + juego.CUENTA_INICIO)[0].numero, 7);
+});
+
+test('marcado manual: el ¡Bingo! cuenta solo lo que el jugador marcó', () => {
+    const carton = generarCarton(SERIE, 1);
+    const fila = primeraFila(carton);
+    const { sala, ids } = salaJugando({ Ana: [1] }, fila, { marcado: 'manual', premios: [{ modalidad: 'linea', porcentaje: 100 }] });
+    sacar(sala, null, fila.slice(1));
+    assert.throws(() => juego.cantarBingo(sala, ids.Ana, 1, 0), /marcas/);
+    const sinUna = juego.cantarBingo(sala, ids.Ana, 1, 0, fila.slice(1));
+    assert.equal(sinUna[0].tipo, 'bingoRechazado', 'no marcó el primer número: no cuenta');
+    // Marcar algo que no salió tampoco sirve
+    assert.equal(juego.cantarBingo(sala, ids.Ana, 1, 0, [...fila.slice(1), 999])[0].tipo, 'bingoRechazado');
+    juego.cantarBingo(sala, ids.Ana, 1, 0, fila);
+    assert.notEqual(sala.ventanaHasta, null, 'con todo marcado, sí');
+    assert.equal(juego.validarConfig({ tipo: 'fila', marcado: 'manual' }).marcado, 'auto');
+    assert.throws(() => juego.validarConfig({ marcado: 'raro' }), /marcar/);
+});
+
+// ---------- Admisión, fichas asignadas y vinculación ----------
+test('admisión: en espera sin fichas; el anfitrión admite, asigna, corrige y queda registrado', () => {
+    const { sala, unir } = nuevaSala({ admision: true, fichasIniciales: 0, precioCarton: 10, mensajeFichas: 'Pide tus fichas <al anfitrión>' });
+    assert.equal(sala.config.mensajeFichas, 'Pide tus fichas al anfitrión', 'sin < ni >');
+    const ana = unir('Ana');
+    assert.equal(ana.admitido, false);
+    assert.equal(ana.fichas, 0);
+    assert.throws(() => juego.elegirCarton(sala, ana.id, 1), /admita/);
+
+    const [solicitud] = juego.pedirFichas(sala, ana.id, 50, 1000);
+    assert.deepEqual([solicitud.tipo, solicitud.para, solicitud.cantidad], ['solicitud', 'anfitrion', 50]);
+    assert.deepEqual(juego.instantanea(sala, { anfitrion: true }).solicitudes.map((x) => [x.apodo, x.cantidad]), [['Ana', 50]]);
+
+    const [evento] = juego.darFichas(sala, ana.id, 50, 2000);
+    assert.deepEqual([evento.tipo, evento.para, evento.saldo], ['fichas', ana.id, 50]);
+    assert.equal(ana.admitido, true, 'dar fichas también admite');
+    assert.equal(ana.solicitud, null);
+    juego.elegirCarton(sala, ana.id, 1);
+    assert.equal(ana.fichas, 40);
+    assert.throws(() => juego.darFichas(sala, ana.id, -41, 3000), /solo tiene 40/);
+    juego.darFichas(sala, ana.id, -5, 3000);
+    const vista = juego.instantanea(sala, { anfitrion: true });
+    assert.deepEqual(vista.movimientos.map((m) => [m.apodo, m.cantidad]), [['Ana', 50], ['Ana', -5]]);
+    assert.throws(() => juego.darFichas(sala, ana.id, 0, 0), /distinto de 0/);
+});
+
+test('admisión: admitir da las fichas al entrar; rechazar funciona aunque la partida haya empezado', () => {
+    const { sala, unir } = nuevaSala({ admision: true, fichasIniciales: 30 });
+    const ana = unir('Ana');
+    const beto = unir('Beto');
+    const eventos = juego.admitir(sala, ana.id, 1000);
+    assert.ok(eventos.some((e) => e.tipo === 'admitido' && e.para === ana.id));
+    assert.equal(ana.fichas, 30);
+    assert.throws(() => juego.admitir(sala, ana.id, 1000), /ya está admitido/);
+    juego.elegirCarton(sala, ana.id, 1);
+    juego.iniciar(sala, 0);
+    juego.expulsar(sala, beto.id); // en espera: se puede rechazar con la partida en marcha
+    assert.equal(sala.jugadores.length, 1);
+    assert.throws(() => juego.expulsar(sala, ana.id), /lobby/);
+    const sinAdmision = nuevaSala().sala;
+    assert.throws(() => juego.pedirFichas(sinAdmision, juego.unirJugador(sinAdmision, { apodo: 'X' }).jugador.id, 10, 0), /se reparten solas/);
+});
+
+test('vinculación: código de 6 cifras, un solo uso, caduca y se anula tras 5 fallos', () => {
+    const { sala } = nuevaSala();
+    const [ev] = juego.crearVinculo(sala, 0);
+    assert.match(ev.codigo, /^\d{6}$/);
+    assert.equal(ev.para, 'anfitrion');
+    assert.equal(juego.usarVinculo(sala, ev.codigo, 1000), sala.tokenAnfitrion);
+    assert.throws(() => juego.usarVinculo(sala, ev.codigo, 1000), /caducó/, 'un solo uso');
+    const [otro] = juego.crearVinculo(sala, 0);
+    assert.throws(() => juego.usarVinculo(sala, otro.codigo, 3 * 60 * 1000), /caducó/);
+    const [tercero] = juego.crearVinculo(sala, 0);
+    const malo = tercero.codigo === '000000' ? '111111' : '000000';
+    for (let i = 0; i < 5; i++) assert.throws(() => juego.usarVinculo(sala, malo, 1000), /incorrecto/);
+    assert.throws(() => juego.usarVinculo(sala, tercero.codigo, 1000), /caducó/, 'tras 5 fallos ya no vale');
 });

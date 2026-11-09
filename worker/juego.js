@@ -17,6 +17,19 @@ export const MAX_JUGADORES = 100;
 export const TOTAL_BOLAS = 75;
 export const INTERVALOS = [4000, 6000, 8000, 12000];
 
+// Planes: el gratis tiene límites; con un código Pro (src/codigos.js) se desbloquea todo
+export const PLANES = {
+    gratis: { jugadores: 15, premios: 1 },
+    pro: { jugadores: MAX_JUGADORES, premios: 3 },
+};
+const PREMIO_GRATIS = [{ modalidad: 'lleno', porcentaje: 100 }];
+
+// Cuenta atrás (3, 2, 1, ¡ya!) entre pulsar «Empezar» y la primera bola, para que todos estén atentos
+export const CUENTA_INICIO = 4000;
+// Cómo se marca (solo bingo clásico): libre = cada jugador elige; auto = se marcan solos;
+// manual = cada uno marca y el ¡Bingo! se comprueba con lo que marcó (si no lo marcó, no cuenta)
+export const MARCADOS = ['libre', 'auto', 'manual'];
+
 const TIEMPOS = {
     // finRonda: de «terminada» a la siguiente ronda; lobbyAuto: cuenta atrás del lobby en rondas seguidas
     normal: { ventana: 4000, pausaPremio: 6000, finRonda: 12000, lobbyAuto: 30000 },
@@ -41,6 +54,9 @@ export const CONFIG_POR_DEFECTO = {
         { modalidad: 'lleno', porcentaje: 70 },
     ],
     pozoExtra: 0,
+    marcado: 'libre',
+    admision: false,        // los jugadores esperan a que el anfitrión los admita y les asigne fichas
+    mensajeFichas: '',      // lo que ve quien espera o pide fichas (lo escribe el anfitrión)
     rondasSeguidas: false,  // al terminar, nueva ronda sola y cuenta atrás para empezar
     bolaDorada: false,      // si sale antes de que haya ganador, el premio en juego se duplica
     botePorcentaje: 0,      // % de las ventas que va al bote acumulado (0 = sin bote)
@@ -102,9 +118,11 @@ export function intervaloValido(intervalo, prueba = false) {
     return prueba && Number.isInteger(intervalo) && intervalo >= 150 && intervalo <= 12000;
 }
 
-export function validarConfig(entrada = {}, { prueba = false } = {}) {
+export function validarConfig(entrada = {}, { prueba = false, pro = false } = {}) {
     if (entrada === null || typeof entrada !== 'object' || Array.isArray(entrada)) fallar('La configuración no es válida.');
-    const valor = (clave) => (entrada[clave] === undefined || entrada[clave] === null ? CONFIG_POR_DEFECTO[clave] : entrada[clave]);
+    // En el plan gratis, si no se dicen los premios, se juega a cartón lleno
+    const porDefecto = pro ? CONFIG_POR_DEFECTO : { ...CONFIG_POR_DEFECTO, premios: PREMIO_GRATIS };
+    const valor = (clave) => (entrada[clave] === undefined || entrada[clave] === null ? porDefecto[clave] : entrada[clave]);
 
     if (typeof valor('nombre') !== 'string') fallar('El nombre debe ser texto.');
     const nombre = limpiarTexto(valor('nombre'));
@@ -126,11 +144,16 @@ export function validarConfig(entrada = {}, { prueba = false } = {}) {
         intervalo: leerEntero(valor('intervalo'), 0, 60000, 'El intervalo'),
         premios: null,
         pozoExtra: leerEntero(valor('pozoExtra'), 0, 100000, 'El pozo extra'),
+        // En Fila de 5 y Elige tus 5 todo es automático
+        marcado: fila || elige ? 'auto' : valor('marcado'),
+        admision: leerBooleano(valor('admision'), 'La admisión de jugadores'),
+        mensajeFichas: typeof valor('mensajeFichas') === 'string' ? limpiarTexto(valor('mensajeFichas')).slice(0, 200) : fallar('El mensaje debe ser texto.'),
         rondasSeguidas: leerBooleano(valor('rondasSeguidas'), 'Las rondas seguidas'),
         bolaDorada: leerBooleano(valor('bolaDorada'), 'La bola dorada'),
         botePorcentaje: leerEntero(valor('botePorcentaje'), 0, 50, 'El porcentaje para el bote'),
         boteBolas: 0,
     };
+    if (!MARCADOS.includes(config.marcado)) fallar('La forma de marcar no es válida.');
     if (config.botePorcentaje > 0) config.boteBolas = leerEntero(valor('boteBolas'), 5, 75, 'Las bolas para ganar el bote');
     if (!intervaloValido(config.intervalo, prueba)) fallar(`El intervalo debe ser ${INTERVALOS.join(', ')} ms.`);
     if (fila || elige) {
@@ -147,12 +170,17 @@ export function validarConfig(entrada = {}, { prueba = false } = {}) {
     });
     if (new Set(config.premios.map((p) => p.modalidad)).size !== config.premios.length) fallar('No se pueden repetir modalidades.');
     if (config.premios.reduce((suma, p) => suma + p.porcentaje, 0) !== 100) fallar('Los porcentajes de los premios deben sumar 100.');
+    if (!pro && config.premios.length > PLANES.gratis.premios) {
+        fallar(`El plan gratis incluye ${PLANES.gratis.premios} premio. Con un código Pro puedes encadenar hasta ${PLANES.pro.premios}.`);
+    }
     return config;
 }
 
 // ---------- Sala ----------
-export function crearSala(codigo, entrada, { prueba = false, azar = AZAR } = {}) {
-    const config = validarConfig(entrada, { prueba });
+// `pro`: { tipo, hasta } si la sala se creó con un código Pro válido; null en el plan gratis
+// `cuenta`: ms de cuenta atrás antes de la primera bola (en modo prueba, 0)
+export function crearSala(codigo, entrada, { prueba = false, azar = AZAR, pro = null, cuenta = prueba ? 0 : CUENTA_INICIO } = {}) {
+    const config = validarConfig(entrada, { prueba, pro: Boolean(pro) });
     const sala = {
         codigo,
         tokenAnfitrion: azar.hex(32),
@@ -183,6 +211,11 @@ export function crearSala(codigo, entrada, { prueba = false, azar = AZAR } = {})
         doradaSalio: false,
         siguienteRondaEn: null,
         inicioAutoEn: null,
+        pro: pro ? { tipo: pro.tipo, hasta: pro.hasta } : null,
+        cuentaInicio: cuenta,
+        movimientos: [],       // fichas asignadas por el anfitrión: [{ en, jugadorId, apodo, cantidad }] (solo lo ve él)
+        vinculo: null,         // { codigo, expira, fallos }: código de un solo uso para manejar la sala desde otro móvil
+        logo: null,            // versión del logo del evento (solo Pro); la imagen se guarda aparte
     };
     recalcularPozo(sala);
     nuevoCompromiso(sala, azar);
@@ -235,6 +268,8 @@ export function limpiarApodo(apodo) {
     return limpio;
 }
 
+export const limiteJugadores = (sala) => (sala.pro ? PLANES.pro.jugadores : PLANES.gratis.jugadores);
+
 // Devuelve { jugador, nuevo }. Con token conocido reconecta (el apodo se ignora).
 // Se conserva la primera semilla válida que mande cada jugador.
 export function unirJugador(sala, { apodo, token, semilla } = {}, azar = AZAR) {
@@ -244,17 +279,23 @@ export function unirJugador(sala, { apodo, token, semilla } = {}, azar = AZAR) {
         return { jugador: existente, nuevo: false };
     }
 
-    if (sala.jugadores.length >= MAX_JUGADORES) fallar('La sala está llena.');
+    if (sala.jugadores.length >= limiteJugadores(sala)) {
+        fallar(sala.pro ? 'La sala está llena.' : `La sala está llena: el plan gratis admite ${PLANES.gratis.jugadores} jugadores.`);
+    }
     const base = limpiarApodo(apodo);
     const usados = new Set(sala.jugadores.map((j) => j.apodo.toLowerCase()));
     let final = base;
     for (let n = 2; usados.has(final.toLowerCase()); n++) final = `${base} ${n}`;
 
+    // Con admisión, entra «en espera» y sin fichas: las fichas al entrar se dan al admitirlo
+    const admitido = !sala.config.admision;
     const jugador = {
         id: azar.hex(8),
         token: azar.hex(32),
         apodo: final,
-        fichas: sala.config.fichasIniciales,
+        fichas: admitido ? sala.config.fichasIniciales : 0,
+        admitido,
+        solicitud: null,       // { cantidad, en }: fichas que ha pedido al anfitrión
         cartones: [],
         conectado: false,
         semilla: semillaValida(semilla) ? semilla : null,
@@ -299,6 +340,7 @@ const tuyo = (sala) => (esModoAuto(sala.config) ? 'tuya' : 'tuyo');
 export function elegirCarton(sala, jugadorId, numero, numeros) {
     const jugador = jugadorOFallar(sala, jugadorId);
     const [uno, varios] = palabras(sala);
+    if (jugador.admitido === false) fallar('Espera a que el anfitrión te admita.');
     if (sala.estado !== 'lobby') fallar(`Solo se pueden elegir ${varios} antes de empezar.`);
     let jugada = null;
     if (esModoElige(sala.config)) {
@@ -356,8 +398,9 @@ export function fijarRepetir(sala, jugadorId, valor) {
 }
 
 export function expulsar(sala, jugadorId) {
-    if (sala.estado !== 'lobby') fallar('Solo se puede expulsar en el lobby.');
     const jugador = buscarJugador(sala, jugadorId) ?? fallar('Ese jugador no está en la sala.');
+    // A quien está en espera se le puede rechazar en cualquier momento (no tiene cartones)
+    if (sala.estado !== 'lobby' && jugador.admitido !== false) fallar('Solo se puede expulsar en el lobby.');
     for (const numero of jugador.cartones) {
         delete sala.ocupados[numero];
         delete sala.jugadas[numero];
@@ -367,6 +410,67 @@ export function expulsar(sala, jugadorId) {
     sala.jugadores = sala.jugadores.filter((j) => j !== jugador);
     recalcularPozo(sala);
     return [{ tipo: 'aviso', texto: `${jugador.apodo} salió de la sala.` }];
+}
+
+// ---------- Admisión y fichas asignadas por el anfitrión ----------
+const MAX_MOVIMIENTOS = 1000;
+const MAX_FICHAS = 1000000;
+
+function apuntarMovimiento(sala, jugador, cantidad, ahora) {
+    sala.movimientos.push({ en: ahora, jugadorId: jugador.id, apodo: jugador.apodo, cantidad });
+    if (sala.movimientos.length > MAX_MOVIMIENTOS) sala.movimientos.splice(0, sala.movimientos.length - MAX_MOVIMIENTOS);
+}
+
+// El jugador pide fichas (solo en salas con admisión); el anfitrión decide cuántas le da
+export function pedirFichas(sala, jugadorId, cantidad, ahora) {
+    const jugador = jugadorOFallar(sala, jugadorId);
+    if (!sala.config.admision) fallar('En esta sala las fichas se reparten solas al entrar.');
+    if (!Number.isInteger(cantidad) || cantidad < 1 || cantidad > 100000) fallar('Pide entre 1 y 100.000 fichas.');
+    jugador.solicitud = { cantidad, en: ahora };
+    return [{ tipo: 'solicitud', jugadorId, apodo: jugador.apodo, cantidad, para: 'anfitrion' }];
+}
+
+export function admitir(sala, jugadorId, ahora) {
+    const jugador = buscarJugador(sala, jugadorId) ?? fallar('Ese jugador no está en la sala.');
+    if (jugador.admitido !== false) fallar(`${jugador.apodo} ya está admitido.`);
+    jugador.admitido = true;
+    const eventos = [{ tipo: 'admitido', para: jugadorId }, { tipo: 'aviso', texto: `${jugador.apodo} ya puede jugar.` }];
+    if (sala.config.fichasIniciales > 0) eventos.push(...darFichas(sala, jugadorId, sala.config.fichasIniciales, ahora));
+    return eventos;
+}
+
+// Suma (o, con cantidad negativa, corrige) fichas a un jugador. Si estaba en espera, lo admite.
+export function darFichas(sala, jugadorId, cantidad, ahora) {
+    const jugador = buscarJugador(sala, jugadorId) ?? fallar('Ese jugador no está en la sala.');
+    if (!Number.isInteger(cantidad) || cantidad === 0 || Math.abs(cantidad) > 100000) fallar('La cantidad debe ser un entero distinto de 0 (hasta 100.000).');
+    if (jugador.fichas + cantidad < 0) fallar(`${jugador.apodo} solo tiene ${jugador.fichas} fichas.`);
+    if (jugador.fichas + cantidad > MAX_FICHAS) fallar('Demasiadas fichas para un jugador.');
+    jugador.fichas += cantidad;
+    jugador.admitido = true;
+    if (cantidad > 0) jugador.solicitud = null;
+    apuntarMovimiento(sala, jugador, cantidad, ahora);
+    return [{ tipo: 'fichas', cantidad, saldo: jugador.fichas, para: jugadorId }];
+}
+
+// Código de 6 cifras para manejar la sala desde otro dispositivo: vale 2 minutos y un solo uso
+const VIGENCIA_VINCULO = 2 * 60 * 1000;
+export function crearVinculo(sala, ahora, azar = AZAR) {
+    const codigo = String(parseInt(azar.hex(8), 16) % 1000000).padStart(6, '0');
+    sala.vinculo = { codigo, expira: ahora + VIGENCIA_VINCULO, fallos: 0 };
+    return [{ tipo: 'vinculo', codigo, expira: sala.vinculo.expira, para: 'anfitrion' }];
+}
+
+// Devuelve el token de anfitrión si el código es bueno. Tras 5 fallos el código deja de valer.
+export function usarVinculo(sala, codigo, ahora) {
+    const v = sala.vinculo;
+    if (!v || ahora > v.expira) fallar('El código de vinculación caducó. Pide otro en el show.');
+    if (String(codigo ?? '').replace(/\D/g, '') !== v.codigo) {
+        v.fallos += 1;
+        if (v.fallos >= 5) sala.vinculo = null;
+        fallar('Código incorrecto.');
+    }
+    sala.vinculo = null;
+    return sala.tokenAnfitrion;
 }
 
 // ---------- Partida ----------
@@ -398,6 +502,12 @@ export function iniciar(sala, ahora, azar = AZAR) {
     sala.ventanaHasta = null;
     sala.premioActual = 0;
     sala.estado = 'jugando';
+    // Con cuenta atrás la primera bola sale al terminarla (la saca avanzar, como las demás)
+    const cuenta = sala.cuentaInicio ?? 0;
+    if (cuenta > 0) {
+        sala.siguienteBolaEn = ahora + cuenta;
+        return [{ tipo: 'aviso', texto: '¡Empieza la partida!' }, { tipo: 'cuenta', ms: cuenta }];
+    }
     return [{ tipo: 'aviso', texto: '¡Empieza la partida!' }, ...sacarBola(sala, ahora)];
 }
 
@@ -484,7 +594,9 @@ function terminar(sala, ahora = null) {
     sala.ventana = [];
 }
 
-export function cantarBingo(sala, jugadorId, numero, ahora) {
+// En modo de marcado «manual», `marcas` son los números que el jugador marcó en ese cartón:
+// el ¡Bingo! se comprueba solo con los marcados que de verdad salieron.
+export function cantarBingo(sala, jugadorId, numero, ahora, marcas = null) {
     const jugador = jugadorOFallar(sala, jugadorId);
     if (sala.estado !== 'jugando' && sala.estado !== 'pausa') fallar('No hay ninguna partida en juego.');
     if (sala.premioActual === null) fallar('No quedan premios en juego.');
@@ -494,7 +606,12 @@ export function cantarBingo(sala, jugadorId, numero, ahora) {
     if (sala.ventana.some((c) => c.carton === numero)) fallar('Ese cartón ya cantó ¡Bingo!');
 
     const premio = sala.premios[sala.premioActual];
-    const resultado = verificar(generarCarton(sala.serie, numero), new Set(sala.bolas), premio.modalidad);
+    let validas = new Set(sala.bolas);
+    if (sala.config.marcado === 'manual') {
+        if (!Array.isArray(marcas) || marcas.length > TOTAL_BOLAS) fallar('Faltan tus marcas del cartón.');
+        validas = new Set(marcas.filter((n) => Number.isInteger(n) && validas.has(n)));
+    }
+    const resultado = verificar(generarCarton(sala.serie, numero), validas, premio.modalidad);
     if (!resultado.gana) {
         return [
             { tipo: 'bingoRechazado', carton: numero, faltan: resultado.faltan, para: jugadorId },
@@ -612,7 +729,13 @@ export function interrumpir(sala, motivo = '') {
 export function sanear(sala) {
     sala.config ??= structuredClone(CONFIG_POR_DEFECTO);
     if (!TIPOS.includes(sala.config.tipo)) sala.config.tipo = 'carton';
+    sala.cuentaInicio ??= CUENTA_INICIO;
     for (const [clave, valor] of Object.entries(CONFIG_POR_DEFECTO)) sala.config[clave] ??= structuredClone(valor);
+    // Salas creadas antes de los planes: conservan lo que tenían (como Pro)
+    if (sala.pro === undefined) sala.pro = { tipo: 'anterior', hasta: null };
+    sala.logo ??= null;
+    if (!Array.isArray(sala.movimientos)) sala.movimientos = [];
+    sala.vinculo ??= null;
     sala.ronda ??= 1;
     sala.bote ??= 0;
     sala.aporteRonda ??= 0;
@@ -722,7 +845,11 @@ export const ROL_DE_ACCION = {
     bingo: 'jugador',
     repetir: 'jugador',
     reaccion: 'jugador',
+    pedirFichas: 'jugador',
     detenerCuenta: 'anfitrion',
+    admitir: 'anfitrion',
+    darFichas: 'anfitrion',
+    vincular: 'anfitrion',
     iniciar: 'anfitrion',
     pausar: 'anfitrion',
     reanudar: 'anfitrion',
@@ -738,8 +865,9 @@ export function comprobarPermiso(rol, tipo) {
 }
 
 // ---------- Vista pública (nunca incluye tokens) ----------
-export function instantanea(sala) {
-    return {
+// `anfitrion`: añade lo que solo ve el anfitrión (peticiones de fichas y registro de movimientos)
+export function instantanea(sala, { anfitrion = false } = {}) {
+    const vista = {
         codigo: sala.codigo,
         nombre: sala.config.nombre,
         estado: sala.estado,
@@ -751,11 +879,14 @@ export function instantanea(sala) {
         pozo: sala.pozo,
         premios: sala.premios.map((p) => ({ ...p, ganadores: p.ganadores.map((g) => ({ ...g })) })),
         premioActual: sala.premioActual,
-        jugadores: sala.jugadores.map(({ id, apodo, fichas, cartones, conectado, ganado = 0, repetir = true }) =>
-            ({ id, apodo, fichas, cartones: [...cartones], conectado, ganado, repetir })),
+        jugadores: sala.jugadores.map(({ id, apodo, fichas, cartones, conectado, ganado = 0, repetir = true, admitido = true }) =>
+            ({ id, apodo, fichas, cartones: [...cartones], conectado, ganado, repetir, admitido })),
         ocupados: { ...sala.ocupados },
         anfitrionConectado: sala.anfitrionConectado,
         ronda: sala.ronda,
+        pro: Boolean(sala.pro),
+        maxJugadores: limiteJugadores(sala),
+        logo: sala.logo,
         bote: sala.bote,
         aporteRonda: sala.aporteRonda,
         jugadas: structuredClone(sala.jugadas ?? {}),
@@ -772,11 +903,19 @@ export function instantanea(sala) {
             semillaServidor: sala.estado === 'terminada' ? sala.semillaServidor : null,
         },
     };
+    if (anfitrion) {
+        vista.solicitudes = sala.jugadores.filter((j) => j.solicitud)
+            .map((j) => ({ jugadorId: j.id, apodo: j.apodo, cantidad: j.solicitud.cantidad, en: j.solicitud.en }));
+        vista.movimientos = (sala.movimientos ?? []).slice(-200).map((m) => ({ ...m }));
+    }
+    return vista;
 }
 
 export const resumen = (sala) => ({
     codigo: sala.codigo,
     nombre: sala.config.nombre,
+    pro: Boolean(sala.pro),
+    logo: sala.logo,
     estado: sala.estado,
     jugadores: sala.jugadores.length,
     config: structuredClone(sala.config),

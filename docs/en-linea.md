@@ -38,6 +38,7 @@ Partidas en línea sobre **Cloudflare Workers + Durable Objects**. Decisiones to
     { modalidad: 'lleno', porcentaje: 70 },
   ],
   pozoExtra: 0,                        // fichas que pone el anfitrión además de las ventas (0–100000)
+  marcado: 'libre',                    // solo bingo clásico: 'libre' (elige cada jugador) | 'auto' | 'manual'
   rondasSeguidas: false,               // al terminar: nueva ronda a los 12 s y arranque solo a los 30 s
   bolaDorada: false,                   // si sale antes del ganador, el premio en juego se duplica
   botePorcentaje: 0,                   // % de las ventas que va al bote acumulado (0–50)
@@ -58,6 +59,27 @@ ventana y la adjudica al cerrarla. El mensaje `bingo` se rechaza en este modo.
 `{ tipo: 'elegirCarton', numeros: [5 enteros 1–75 distintos] }`; el servidor le pone número (1, 2, 3…)
 y la publica en `estado.jugadas`. `cartones` es el máximo de jugadas de la sala. Las jugadas pueden
 repetirse entre jugadores: si varias se completan con la misma bola, el premio se reparte.
+
+**Forma de marcar** (`marcado`): con `manual`, el mensaje `bingo` lleva `marcas` (números que el
+jugador marcó en ese cartón) y el servidor comprueba el premio solo con los marcados que salieron:
+si no lo marcó, no cuenta. Con `auto` los móviles marcan solos y no ofrecen el selector.
+
+**Cuenta atrás**: al iniciar (también en rondas seguidas) la primera bola no sale al momento: el
+servidor manda `{ tipo: 'cuenta', ms: 4000 }` y la saca al terminar (`CUENTA_INICIO`; 0 en modo prueba).
+El show y los móviles muestran 3, 2, 1, ¡Ya!. El show sin conexión hace lo mismo al dar play.
+
+**Admisión y fichas asignadas** (`admision: true`, `mensajeFichas`): los jugadores nuevos entran con
+`admitido: false` y 0 fichas, y no pueden elegir. Mensajes: jugador → `{ tipo: 'pedirFichas', cantidad }`
+(el anfitrión recibe `{ tipo: 'solicitud', jugadorId, apodo, cantidad }`); anfitrión → `{ tipo: 'admitir', jugadorId }`
+(da las `fichasIniciales`), `{ tipo: 'darFichas', jugadorId, cantidad }` (negativa para corregir; admite si
+estaba en espera) y `expulsar` (rechazar, también con la partida en marcha si está en espera). El jugador recibe
+`{ tipo: 'admitido' }` y `{ tipo: 'fichas', cantidad, saldo }`. Cada asignación queda en `movimientos`, que junto
+con `solicitudes` solo va en la instantánea del anfitrión (`instantanea(sala, { anfitrion: true })`).
+La app no procesa pagos: lo que el organizador cobre fuera es cosa suya (`terminos.html`).
+
+**Control desde el móvil** (`anfitrion.html`, `src/control.js`): el show pide `{ tipo: 'vincular' }` y recibe
+`{ tipo: 'vinculo', codigo, expira }` (6 cifras, 2 minutos, un solo uso, se anula tras 5 fallos). El móvil
+lo canjea en `POST /api/salas/:codigo/vincular { codigo }` → `{ tokenAnfitrion }` y se conecta como anfitrión.
 
 **Extras** (cualquier tipo):
 - *Rondas seguidas*: al terminar, `siguienteRondaEn` programa la nueva ronda; a quien tenga `repetir`
@@ -107,6 +129,27 @@ repetirse entre jugadores: si varias se completan con la misma bola, el premio s
   normaliza (`toUpperCase`) y la usa como nombre del Durable Object (`idFromName`).
 - Tokens: 32 caracteres hex aleatorios. Nunca se envían a otros clientes.
 - Todo lo demás lo sirve Workers Static Assets desde la raíz del repo (ver `.assetsignore`).
+
+**Planes** (`PLANES` en `worker/juego.js`): sin código, la sala es del plan gratis (15 jugadores y
+1 premio; si no se mandan premios, cartón lleno). Con `codigoPro` válido es Pro (100 jugadores,
+3 premios y logo). El Worker comprueba el código con la clave `CODIGOS_SECRETO` (secreto de
+Cloudflare; en local, `.dev.vars`) y pasa `{ tipo, hasta }` al Durable Object. Un código falso o
+caducado responde `400` **y gasta cupo del límite por IP**. La instantánea lleva `pro`,
+`maxJugadores` y `logo` (versión). El logo (`config.logo`: data URL PNG/JPEG/WebP ≤ 60 KB, solo Pro)
+se guarda aparte y se sirve en `GET /api/salas/:codigo/logo?v=…`; no viaja en el estado.
+
+**Códigos Pro** (`src/codigos.js`): `PRO-XXXXXX-XXXXXX-XXXXXX`, base32 de Crockford con tipo,
+hora de caducidad, azar y 40 bits de firma HMAC-SHA256. Se generan con `npm run codigo`
+(`-- --dias 30` para un mes, `-- --verificar CÓDIGO` para comprobar uno).
+
+**Panel de administración** (`admin.html`, `src/admin.js`, `worker/registro.js`): con la clave
+`ADMIN_CLAVE` (secreto de Cloudflare; en local, `.dev.vars`) se generan códigos (Evento S/ 25 · 24 h,
+Mensual S/ 60 · 30 días, Cortesía S/ 0), se anulan o reactivan, y se ven ingresos y salas creadas.
+API (cabecera `Authorization: Bearer <ADMIN_CLAVE>`): `GET /api/admin/resumen`,
+`POST /api/admin/codigos { plan, dias?, nota?, cliente? }`, `POST /api/admin/codigos/anular { codigo, anulado }`.
+Los intentos con clave incorrecta gastan cupo del limitador de la IP (10 por hora). El registro es un
+Durable Object único (`Registro`): un código anulado deja de servir para crear salas, y los códigos
+generados con `npm run codigo` se registran (origen «terminal») la primera vez que se usan.
 
 **Límite de salas** (`worker/limitador.js`): cada IP (`cf-connecting-ip`) puede crear como mucho
 10 salas por hora. Lo lleva un Durable Object `Limitador` por IP, que se borra solo cuando ya no

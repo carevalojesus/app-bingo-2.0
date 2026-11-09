@@ -5,6 +5,7 @@ import { conectarSala, consultarSala, CLAVES, normalizarCodigo } from './en-line
 import { htmlCarton } from './carton-html.js';
 import * as sfx from './efectos.js';
 import { crearPanelSonido } from './volumen.js';
+import { cuentaAtras } from './cuenta.js';
 import { nuevaSemilla, verificarPartida } from './justo.js';
 import { esModoFila, esModoElige, esModoAuto, analizarJugada, numerosDeFila } from './filas.js';
 import {
@@ -36,6 +37,7 @@ const app = {
     verificacion: null, // { clave, valida, errores } del botón «Verificar partida»
     borrador: new Set(), // «Elige tus 5»: números marcados para la próxima jugada
     falta1: new Set(), // cartones/filas que ya avisaron de que les falta 1
+    pedido: null, // { cantidad, en }: fichas pedidas al anfitrión que aún no llegan
 };
 
 // Números de una fila («Fila de 5») o de una jugada («Elige tus 5»)
@@ -206,6 +208,16 @@ function recibir(mensaje) {
         case 'ganador':
             celebrar(mensaje);
             break;
+        case 'cuenta':
+            cerrarCelebracion();
+            cuentaAtras({
+                ms: Number(mensaje.ms) || 4000,
+                alTick: (n) => {
+                    vibrar(n > 0 ? 60 : [120, 60, 120]);
+                    sonar(n > 0 ? 'golpe' : 'campana');
+                },
+            });
+            break;
         case 'dorada':
             avisar(`¡Bola dorada! Salió el ${nombreBola(mensaje.numero)}: el premio se duplica a ${fichas(mensaje.fichas)}.`, 'info', 6000);
             vibrar([100, 50, 100, 50, 200]);
@@ -214,6 +226,19 @@ function recibir(mensaje) {
         case 'reaccion':
             flotarReaccion(mensaje.emoji, mensaje.apodo);
             break;
+        case 'admitido':
+            avisar('¡El anfitrión te admitió! Ya puedes elegir.', 'info', 5000);
+            vibrar([80, 60, 80]);
+            sonar('campana');
+            break;
+        case 'fichas': {
+            const n = Number(mensaje.cantidad) || 0;
+            if (n > 0) app.pedido = null;
+            avisar(n > 0 ? `Recibiste ${fichas(n)}. Saldo: ${fmt(mensaje.saldo)}.` : `El anfitrión corrigió tu saldo (${fmt(n)}). Saldo: ${fmt(mensaje.saldo)}.`, 'info', 5000);
+            vibrar(n > 0 ? [60, 40, 120] : 60);
+            if (n > 0) sonar('campana');
+            break;
+        }
         case 'bingoRechazado': {
             app.cantando.delete(Number(mensaje.carton));
             const faltan = (mensaje.faltan ?? []).map(nombreBola);
@@ -259,6 +284,48 @@ function nuevoEstado(sala) {
     if (sala.estado === 'lobby') app.cantando.clear();
     if (anterior && anterior.estado !== 'terminada' && sala.estado === 'terminada') registrarHistorial(sala);
     if (anterior?.estado !== sala.estado) app.falta1.clear();
+    dibujar();
+}
+
+// ---------- Admisión: espera y petición de fichas ----------
+function htmlPedirFichas(sala, { titulo = '¿Necesitas fichas?' } = {}) {
+    const mensaje = sala.config?.mensajeFichas;
+    const pedido = app.pedido;
+    return `<div class="carta mt-5 p-4">
+        <h2 class="font-display text-xl">${titulo}</h2>
+        ${mensaje ? `<p class="mt-2 rounded-xl border-[2.5px] border-tinta bg-papel px-3 py-2 text-sm font-black">${esc(mensaje)}</p>` : ''}
+        ${pedido
+        ? `<p class="mt-3 rounded-xl border-[2.5px] border-tinta bg-girasol px-3 py-2 text-sm font-black" role="status">Pediste ${fichas(pedido.cantidad)}. Espera a que el anfitrión te las asigne.</p>`
+        : ''}
+        <p class="mt-3 text-xs font-bold text-tinta/70">${pedido ? 'Puedes cambiar tu pedido:' : 'Pide al anfitrión las fichas que quieras:'}</p>
+        <div class="mt-2 grid grid-cols-3 gap-2">${[20, 50, 100].map((n) =>
+            `<button type="button" data-pedir="${n}" class="boton h-11 bg-crema text-sm">${n}</button>`).join('')}</div>
+        <div class="mt-2 flex gap-2">
+            <input id="cantidadPedida" type="number" inputmode="numeric" min="1" max="100000" placeholder="Otra cantidad" class="campo min-w-0 flex-1" aria-label="Otra cantidad de fichas">
+            <button type="button" data-pedir="otra" class="boton h-12 shrink-0 bg-girasol px-4 text-sm">Pedir</button>
+        </div>
+    </div>`;
+}
+
+function htmlEspera(sala) {
+    return `<div class="carta p-5 text-center">
+        <p class="text-4xl" aria-hidden="true">⏳</p>
+        <p class="mt-2 font-display text-2xl leading-tight">Esperando al anfitrión</p>
+        <p class="mt-1 text-sm font-bold text-tinta/70">En esta sala el anfitrión admite a cada jugador y le asigna sus fichas. Cuando lo haga, podrás elegir.</p>
+    </div>
+    ${htmlPedirFichas(sala, { titulo: 'Pide tus fichas' })}`;
+}
+
+function pedirFichas(valor) {
+    const cantidad = valor === 'otra' ? Number($('cantidadPedida')?.value) : Number(valor);
+    if (!Number.isInteger(cantidad) || cantidad < 1 || cantidad > 100000) {
+        avisar('Escribe una cantidad entre 1 y 100.000.', 'error');
+        return;
+    }
+    if (!enviar({ tipo: 'pedirFichas', cantidad })) return;
+    app.pedido = { cantidad, en: Date.now() };
+    vibrar(20);
+    avisar(`Pedido enviado: ${fichas(cantidad)}.`);
     dibujar();
 }
 
@@ -369,10 +436,29 @@ function dibujar() {
     const estado = sala.estado === 'lobby' ? `Eligiendo ${unidad(sala).varios}` : NOMBRES_ESTADO[sala.estado] ?? '';
     $('codigoSala').textContent = `Sala ${sala.codigo || app.codigo} · ${estado}`;
     document.title = `${sala.nombre || 'Jugar'} · Bingo Show`;
+    // Logo del evento (Pro) en lugar del de Bingo Show
+    const logo = sala.logo ? `/api/salas/${encodeURIComponent(sala.codigo || app.codigo)}/logo?v=${encodeURIComponent(sala.logo)}` : '';
+    if ($('logoSala').dataset.src !== logo) {
+        $('logoSala').dataset.src = logo;
+        if (logo) $('logoSala').src = logo;
+        $('logoSala').alt = logo ? `Logo de ${sala.nombre || 'la sala'}` : '';
+        $('logoSala').classList.toggle('hidden', !logo);
+        $('logoBingo').classList.toggle('hidden', Boolean(logo));
+    }
 
     pintar($('avisoSala'), htmlResumen());
 
     const enJuego = sala.estado === 'jugando' || sala.estado === 'pausa';
+    // Sala con admisión: hasta que el anfitrión lo admita, el jugador solo ve la espera
+    const yoAhora = miJugador(sala, app.miId);
+    if (yoAhora && yoAhora.admitido === false) {
+        $('codigoSala').textContent = `Sala ${sala.codigo || app.codigo} · En espera`;
+        $('vistaLobby').hidden = false;
+        $('vistaJuego').hidden = true;
+        $('vistaFin').hidden = true;
+        pintar($('vistaLobby'), htmlEspera(sala));
+        return;
+    }
     $('vistaLobby').hidden = sala.estado !== 'lobby';
     $('vistaJuego').hidden = !enJuego;
     $('vistaFin').hidden = sala.estado !== 'terminada';
@@ -520,9 +606,11 @@ function dibujarLobby() {
             <div class="mt-3 ${modoFila ? 'grid gap-1.5' : 'grid grid-cols-[repeat(auto-fill,minmax(2.75rem,1fr))] gap-1.5'}" role="group" aria-label="${u.Varios} a la venta">${botones}</div>
         </div>`}
 
+        ${config.admision ? htmlPedirFichas(sala) : ''}
+
         ${esModoAuto(config) ? '' : `<div class="carta mt-5 p-4">
-            <h2 class="font-display text-xl">¿Cómo quieres marcar?</h2>
-            <p class="mt-1 text-xs font-bold text-tinta/70">Puedes cambiarlo cuando quieras, también durante la partida.</p>
+            <h2 class="font-display text-xl">${marcadoSala() === 'libre' ? '¿Cómo quieres marcar?' : 'Cómo se marca'}</h2>
+            ${marcadoSala() === 'libre' ? '<p class="mt-1 text-xs font-bold text-tinta/70">Puedes cambiarlo cuando quieras, también durante la partida.</p>' : ''}
             <div class="mt-3">${htmlModoMarcado()}</div>
         </div>`}
 
@@ -707,7 +795,23 @@ function dibujarJuego() {
 }
 
 // Selector «¿Cómo quieres marcar?»: se ofrece en el lobby y durante la partida
+// Forma de marcar en vigor: la que fija el anfitrión o, si la deja libre, la que eligió el jugador
+const marcadoSala = () => app.sala?.config?.marcado ?? 'libre';
+function marcaSolo() {
+    const marcado = marcadoSala();
+    return marcado === 'auto' ? true : marcado === 'manual' ? false : app.marcarSolo;
+}
+
 function htmlModoMarcado() {
+    const marcado = marcadoSala();
+    if (marcado === 'auto') {
+        return `<p class="rounded-2xl border-[3px] border-tinta bg-menta px-4 py-3 text-sm font-black shadow-duro-sm">
+            El anfitrión eligió <b>marcado automático</b>: tus cartones se marcan solos. Tú solo cantas ¡Bingo!</p>`;
+    }
+    if (marcado === 'manual') {
+        return `<p class="rounded-2xl border-[3px] border-tinta bg-girasol px-4 py-3 text-sm font-black shadow-duro-sm">
+            El anfitrión eligió <b>marcar a mano</b>: toca cada número que salga. Si no lo marcas, no cuenta para tu ¡Bingo!</p>`;
+    }
     const opcion = (modo, titulo, detalle) => {
         const activo = (modo === 'auto') === app.marcarSolo;
         return `<button type="button" role="radio" aria-checked="${activo}" data-modo="${modo}"
@@ -742,7 +846,7 @@ function cambiarModoMarcado(automatico) {
 }
 
 function marcasDe(carton, salidas) {
-    if (app.marcarSolo) return salidas;
+    if (marcaSolo()) return salidas;
     const mias = (app.marcas.cartones[carton] ?? []).filter((n) => salidas.has(n));
     return new Set(mias);
 }
@@ -758,7 +862,10 @@ function dibujarCartones() {
     if (esModoAuto(sala.config)) return dibujarAutos(mios, salidas);
 
     pintar($('modoMarcadoJuego'), htmlModoMarcado());
-    $('ayudaMarcar').textContent = app.marcarSolo
+    // Si el anfitrión fijó la forma de marcar, el aviso de arriba ya lo explica
+    $('ayudaMarcar').textContent = marcadoSala() !== 'libre'
+        ? ''
+        : marcaSolo()
         ? 'Cada bola que sale se marca sola en tus cartones. Tú solo cantas ¡Bingo!'
         : 'Toca los números que ya salieron para marcarlos. Aunque se te pase alguno, tu ¡Bingo! se comprueba con las bolas reales.';
 
@@ -879,7 +986,7 @@ function prepararCeldas(mios, salidas) {
             const numero = columnas[i % 5][Math.floor(i / 5)];
             if (numero === null) return;
             const marcada = marcas.has(numero);
-            if (app.marcarSolo) {
+            if (marcaSolo()) {
                 celda.setAttribute('aria-label', `${nombreBola(numero)}${marcada ? ', salió' : ''}`);
                 return;
             }
@@ -895,7 +1002,7 @@ function prepararCeldas(mios, salidas) {
 
 function tocarCelda(carton, numero) {
     const sala = app.sala;
-    if (!sala || app.marcarSolo) return;
+    if (!sala || marcaSolo()) return;
     if (!(sala.bolas ?? []).includes(numero)) {
         avisar(`El ${nombreBola(numero)} todavía no ha salido.`);
         vibrar(30);
@@ -914,7 +1021,9 @@ function cantar(numero) {
     const sala = app.sala;
     if (!sala || !(sala.estado === 'jugando' || sala.estado === 'pausa')) return;
     if ((app.cantando.get(numero) ?? 0) > Date.now()) return;
-    if (!enviar({ tipo: 'bingo', numero })) return;
+    // Con marcado manual obligatorio el servidor comprueba con lo que marcaste
+    const marcas = marcadoSala() === 'manual' ? (app.marcas.cartones[numero] ?? []) : undefined;
+    if (!enviar({ tipo: 'bingo', numero, marcas })) return;
     app.cantando.set(numero, Date.now() + ESPERA_CANTAR);
     vibrar(50);
     dibujarCartones();
@@ -998,6 +1107,7 @@ function dibujarFin() {
             ${htmlPremios(premiosDe(sala), { conGanadores: true })}
         </div>
         ${htmlRanking(sala)}
+        ${sala.config?.admision ? htmlPedirFichas(sala, { titulo: '¿Quieres más fichas?' }) : ''}
         ${sala.config?.rondasSeguidas ? `<div class="carta mt-5 p-4">${htmlRonda(sala)}</div>` : ''}
         ${htmlVerificar(sala)}
         <div class="mt-5">${htmlHistorial()}</div>
@@ -1186,6 +1296,9 @@ const mensajeConsulta = (error, codigo) => (error instanceof TypeError
 
 function abrirEntrar(error = '') {
     mostrarVista('vistaEntrar');
+    $('logoSala').classList.add('hidden');
+    $('logoSala').dataset.src = '';
+    $('logoBingo').classList.remove('hidden');
     $('nombreSala').textContent = 'Bingo Show';
     $('codigoSala').textContent = '';
     document.title = 'Jugar · Bingo Show';
@@ -1288,10 +1401,12 @@ $('vistaLobby').addEventListener('click', (e) => {
     if (soltar) soltarJugada(Number(soltar.dataset.soltar));
 });
 
-// Reacciones y «repetir» (se pintan en varias vistas)
+// Reacciones, «repetir» y pedir fichas (se pintan en varias vistas)
 document.addEventListener('click', (e) => {
     const reaccion = e.target.closest('[data-reaccion]');
-    if (reaccion) reaccionar(reaccion.dataset.reaccion);
+    if (reaccion) return reaccionar(reaccion.dataset.reaccion);
+    const pedir = e.target.closest('[data-pedir]');
+    if (pedir) pedirFichas(pedir.dataset.pedir);
 });
 document.addEventListener('change', (e) => {
     if (e.target.matches?.('[data-repetir]')) enviar({ tipo: 'repetir', valor: e.target.checked });

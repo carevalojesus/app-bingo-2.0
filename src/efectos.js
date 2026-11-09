@@ -164,6 +164,23 @@ export function fanfarria() {
 }
 
 // `texto` puede ser un texto o { texto, lang } (ver src/narrador.js)
+// Tintineo corto de una bola que cae en el bombo; `altura` (0–1) sube el tono a medida que se llena
+export function tintineo(altura = 0.5) {
+    const ctx = contexto();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const base = 1200 + altura * 900 + Math.random() * 120;
+    for (const [frecuencia, pico] of [[base, 0.12], [base * 2.7, 0.04]]) {
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(frecuencia, t);
+        const g = envolvente(ctx, t, pico, 0.004, 0.18);
+        osc.connect(g).connect(salidaGeneral(ctx));
+        osc.start(t);
+        osc.stop(t + 0.25);
+    }
+}
+
 export function cantar(texto, lang = 'es-ES') {
     if (!('speechSynthesis' in window)) return;
     if (texto && typeof texto === 'object') ({ texto, lang = 'es-ES' } = texto);

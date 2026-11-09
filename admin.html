@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Administración · Bingo Show</title>
+    <meta name="theme-color" content="#1a0d36">
+    <link rel="stylesheet" href="dist/styles.css">
+</head>
+<body class="min-h-screen bg-escenario font-ui text-tinta antialiased">
+
+<header class="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 pt-6 sm:px-6">
+    <div class="flex items-center gap-3">
+        <div class="flex gap-1" aria-hidden="true">
+            <span class="logo-ficha bg-tomate" style="transform:rotate(-6deg)">B</span>
+            <span class="logo-ficha bg-girasol" style="transform:rotate(4deg)">S</span>
+        </div>
+        <h1 class="font-display text-xl text-crema sm:text-3xl">Administración</h1>
+    </div>
+    <button id="salirBtn" type="button" class="boton hidden h-11 bg-crema px-4 text-sm">Salir</button>
+</header>
+
+<main class="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+    <!-- Entrar -->
+    <form id="formEntrar" class="carta mx-auto max-w-sm p-5" novalidate>
+        <h2 class="font-display text-2xl">Entrar</h2>
+        <p class="mt-1 text-sm font-bold text-tinta/70">Escribe la clave de administración (ADMIN_CLAVE).</p>
+        <label for="clave" class="etiqueta mt-4 block">Clave</label>
+        <input id="clave" type="password" autocomplete="current-password" class="campo mt-1.5 w-full font-mono" required>
+        <p id="errorEntrar" class="mt-2 hidden text-sm font-black text-tomate" role="alert"></p>
+        <button type="submit" class="boton mt-4 h-12 w-full bg-girasol">Entrar</button>
+    </form>
+
+    <!-- Panel -->
+    <div id="panel" class="hidden">
+        <section class="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Resumen">
+            <div class="carta p-4"><p class="etiqueta text-tinta/60">Ingresos</p><p id="kIngresos" class="font-display text-3xl">—</p><p class="text-xs font-bold text-tinta/60">códigos vendidos, sin anulados</p></div>
+            <div class="carta p-4"><p class="etiqueta text-tinta/60">Códigos activos</p><p id="kActivos" class="font-display text-3xl">—</p><p id="kActivosDetalle" class="text-xs font-bold text-tinta/60"></p></div>
+            <div class="carta p-4"><p class="etiqueta text-tinta/60">Salas hoy</p><p id="kHoy" class="font-display text-3xl">—</p><p id="kHoyDetalle" class="text-xs font-bold text-tinta/60"></p></div>
+            <div class="carta p-4"><p class="etiqueta text-tinta/60">Salas en 30 días</p><p id="kMes" class="font-display text-3xl">—</p><p id="kMesDetalle" class="text-xs font-bold text-tinta/60"></p></div>
+        </section>
+
+        <div class="mt-5 grid gap-5 lg:grid-cols-[360px_1fr] lg:items-start">
+            <form id="formCodigo" class="carta p-5" novalidate autocomplete="off">
+                <h2 class="font-display text-2xl">Nuevo código</h2>
+                <fieldset class="mt-3">
+                    <legend class="etiqueta">Plan</legend>
+                    <div class="mt-1.5 grid gap-1.5" role="radiogroup">
+                        <label class="flex cursor-pointer items-center gap-2 rounded-xl border-[2.5px] border-tinta bg-white px-3 py-2 font-bold">
+                            <input type="radio" name="plan" value="evento" checked class="accent-[#ff5a36]"> Evento <span class="ml-auto font-display">S/ 25</span><span class="text-xs text-tinta/60">24 h</span></label>
+                        <label class="flex cursor-pointer items-center gap-2 rounded-xl border-[2.5px] border-tinta bg-white px-3 py-2 font-bold">
+                            <input type="radio" name="plan" value="mensual" class="accent-[#ff5a36]"> Mensual <span class="ml-auto font-display">S/ 60</span><span class="text-xs text-tinta/60">30 días</span></label>
+                        <label class="flex cursor-pointer items-center gap-2 rounded-xl border-[2.5px] border-tinta bg-white px-3 py-2 font-bold">
+                            <input type="radio" name="plan" value="cortesia" class="accent-[#ff5a36]"> Cortesía <span class="ml-auto font-display">S/ 0</span><span class="text-xs text-tinta/60">demos</span></label>
+                    </div>
+                </fieldset>
+                <div id="campoDias" class="mt-3 hidden">
+                    <label for="dias" class="etiqueta block">Días de cortesía</label>
+                    <input id="dias" type="number" min="1" max="90" value="1" inputmode="numeric" class="campo mt-1.5 w-full">
+                </div>
+                <label for="nota" class="etiqueta mt-3 block">Cliente o evento <span class="text-tinta/50">(opcional)</span></label>
+                <input id="nota" maxlength="80" placeholder="Colegio San Juan · kermés" class="campo mt-1.5 w-full">
+                <label for="cliente" class="etiqueta mt-3 block">WhatsApp del cliente <span class="text-tinta/50">(opcional)</span></label>
+                <input id="cliente" maxlength="20" inputmode="tel" placeholder="51987654321" class="campo mt-1.5 w-full">
+                <p id="errorCodigo" class="mt-2 hidden text-sm font-black text-tomate" role="alert"></p>
+                <button type="submit" id="emitirBtn" class="boton mt-4 h-12 w-full bg-girasol">Generar código</button>
+
+                <div id="emitido" class="mt-4 hidden rounded-2xl border-[3px] border-tinta bg-menta p-3 text-center" role="status">
+                    <p class="etiqueta">Código listo</p>
+                    <p id="emitidoCodigo" class="mt-1 select-all break-all font-mono text-lg font-black"></p>
+                    <p id="emitidoDetalle" class="text-xs font-bold"></p>
+                    <div class="mt-2 grid grid-cols-2 gap-2">
+                        <button type="button" id="copiarEmitido" class="boton h-10 bg-crema text-xs">Copiar</button>
+                        <a id="whatsappEmitido" target="_blank" rel="noopener" class="boton h-10 bg-crema text-xs">Enviar por WhatsApp</a>
+                    </div>
+                </div>
+            </form>
+
+            <section class="carta min-w-0 p-5" aria-labelledby="tituloCodigos">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <h2 id="tituloCodigos" class="font-display text-2xl">Códigos</h2>
+                    <div class="flex flex-wrap gap-2">
+                        <input id="buscar" type="search" placeholder="Buscar código o cliente" class="campo h-10 w-48 text-sm" aria-label="Buscar">
+                        <select id="filtro" class="campo h-10 text-sm" aria-label="Filtrar">
+                            <option value="todos">Todos</option>
+                            <option value="activo">Activos</option>
+                            <option value="caducado">Caducados</option>
+                            <option value="anulado">Anulados</option>
+                        </select>
+                        <button type="button" id="recargarBtn" class="boton h-10 bg-crema px-3 text-xs">Actualizar</button>
+                    </div>
+                </div>
+                <div class="mt-3 overflow-x-auto">
+                    <table class="w-full min-w-[640px] border-separate border-spacing-y-1.5 text-left text-sm">
+                        <thead class="etiqueta text-tinta/60">
+                            <tr><th class="px-2">Código</th><th class="px-2">Plan</th><th class="px-2">Cliente</th><th class="px-2">Caduca</th><th class="px-2">Salas</th><th class="px-2">Estado</th><th class="px-2"><span class="sr-only">Acción</span></th></tr>
+                        </thead>
+                        <tbody id="tablaCodigos"></tbody>
+                    </table>
+                </div>
+                <p id="sinCodigos" class="mt-3 hidden rounded-xl border-[2.5px] border-dashed border-tinta/30 p-4 text-center text-sm font-bold text-tinta/60">No hay códigos que mostrar.</p>
+            </section>
+        </div>
+    </div>
+</main>
+
+<div id="aviso" class="pointer-events-none fixed bottom-4 left-1/2 z-50 hidden -translate-x-1/2 rounded-full border-[3px] border-tinta bg-crema px-4 py-2 text-sm font-black shadow-duro" role="status"></div>
+
+<script src="dist/admin.js"></script>
+</body>
+</html>

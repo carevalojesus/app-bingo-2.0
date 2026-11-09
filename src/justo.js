@@ -21,7 +21,7 @@ export function desdeHex(hex) {
     return Uint8Array.from(hex.match(/../g) || [], (par) => parseInt(par, 16));
 }
 
-function palabrasABytes(palabras) {
+export function palabrasABytes(palabras) {
     const bytes = new Uint8Array(palabras.length * 4);
     const vista = new DataView(bytes.buffer);
     palabras.forEach((p, i) => vista.setUint32(i * 4, p));

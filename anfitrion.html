@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Control del anfitrión · Bingo Show</title>
+    <meta name="theme-color" content="#1a0d36">
+    <link rel="stylesheet" href="dist/styles.css">
+</head>
+<body class="min-h-screen bg-escenario font-ui text-tinta antialiased">
+
+<header class="sticky top-0 z-30 border-b-[3px] border-tinta bg-escenario/95 backdrop-blur">
+    <div class="mx-auto flex max-w-xl items-center gap-2 px-4 py-2">
+        <div class="flex shrink-0 gap-0.5" aria-hidden="true">
+            <span class="grid h-7 w-7 place-items-center rounded-md border-[2.5px] border-tinta bg-tomate font-display text-sm" style="transform:rotate(-6deg)">B</span>
+            <span class="grid h-7 w-7 place-items-center rounded-md border-[2.5px] border-tinta bg-girasol font-display text-sm" style="transform:rotate(5deg)">S</span>
+        </div>
+        <div class="min-w-0 flex-1">
+            <p id="nombreSala" class="truncate font-display text-base leading-tight text-crema">Control del anfitrión</p>
+            <p id="estadoSala" class="truncate text-[11px] font-black uppercase tracking-[0.18em] text-crema/70"></p>
+        </div>
+        <p id="conexion" class="flex h-8 shrink-0 items-center rounded-full border-[2.5px] border-tinta bg-crema px-2.5 text-[11px] font-black uppercase tracking-wide">Sin conectar</p>
+    </div>
+</header>
+
+<main class="mx-auto max-w-xl px-4 py-5">
+    <!-- Vincular este móvil -->
+    <form id="formVincular" class="carta hidden p-5" novalidate autocomplete="off">
+        <h1 class="font-display text-2xl leading-tight">Controla tu sala desde aquí</h1>
+        <p class="mt-1 text-sm font-bold text-tinta/70">En el show, pulsa «📱 Controlar desde mi móvil» y escribe el código de 6 cifras que aparece.</p>
+        <label for="codigoSala" class="etiqueta mt-4 block">Sala</label>
+        <input id="codigoSala" maxlength="6" spellcheck="false" placeholder="K7Q2XM" class="campo mt-1.5 w-full font-display uppercase tracking-widest">
+        <label for="codigoVinculo" class="etiqueta mt-3 block">Código de 6 cifras</label>
+        <input id="codigoVinculo" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" class="campo mt-1.5 w-full font-display text-2xl tracking-[0.3em]">
+        <p id="errorVincular" class="mt-2 hidden text-sm font-black text-tomate" role="alert"></p>
+        <button type="submit" class="boton mt-4 h-12 w-full bg-girasol">Vincular este móvil</button>
+    </form>
+
+    <div id="panel" class="hidden">
+        <section class="carta p-4">
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <p class="etiqueta text-tinta/60">Pozo</p>
+                    <p id="pozo" class="font-display text-3xl leading-none">0</p>
+                </div>
+                <div class="text-right">
+                    <p class="etiqueta text-tinta/60">Bolas</p>
+                    <p id="bolas" class="font-display text-3xl leading-none">0</p>
+                </div>
+            </div>
+            <div id="controles" class="mt-4 grid grid-cols-2 gap-2"></div>
+        </section>
+
+        <section id="seccionSolicitudes" class="carta mt-5 hidden p-4" aria-labelledby="tituloSolicitudes">
+            <h2 id="tituloSolicitudes" class="font-display text-xl">Pendientes</h2>
+            <ul id="solicitudes" class="mt-3 grid gap-2"></ul>
+        </section>
+
+        <section class="carta mt-5 p-4" aria-labelledby="tituloJugadores">
+            <div class="flex items-baseline justify-between gap-2">
+                <h2 id="tituloJugadores" class="font-display text-xl">Jugadores</h2>
+                <p id="cuentaJugadores" class="text-xs font-black"></p>
+            </div>
+            <ul id="jugadores" class="mt-3 grid gap-2"></ul>
+        </section>
+
+        <section id="seccionRegistro" class="carta mt-5 hidden p-4" aria-labelledby="tituloRegistro">
+            <div class="flex items-baseline justify-between gap-2">
+                <h2 id="tituloRegistro" class="font-display text-xl">Registro de fichas</h2>
+                <button type="button" id="descargarRegistro" class="boton h-9 bg-crema px-3 text-[11px]">Descargar CSV</button>
+            </div>
+            <p id="totalRegistro" class="mt-1 text-sm font-black"></p>
+            <ol id="registro" class="mt-3 grid gap-1 text-sm"></ol>
+        </section>
+
+        <button type="button" id="desvincular" class="mx-auto mt-6 block text-xs font-black uppercase tracking-wide text-crema/70 underline">Desvincular este móvil</button>
+    </div>
+</main>
+
+<div id="aviso" class="pointer-events-none fixed bottom-4 left-1/2 z-50 hidden max-w-[90vw] -translate-x-1/2 rounded-2xl border-[3px] border-tinta bg-crema px-4 py-2 text-center text-sm font-black shadow-duro" role="status"></div>
+
+<script src="dist/control.js"></script>
+</body>
+</html>

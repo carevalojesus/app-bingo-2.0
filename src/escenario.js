@@ -542,6 +542,7 @@ export function crearEscenario(canvas, { columnaDe, colores, reducirMovimiento =
     function retirar(numeros) {
         for (const n of numeros) {
             const b = porNumero.get(n);
+            if (b) terminarRelleno(b);
             if (!b || b.estado !== 'bombo') continue;
             b.estado = 'fuera';
             b.mesh.visible = false;
@@ -559,6 +560,91 @@ export function crearEscenario(canvas, { columnaDe, colores, reducirMovimiento =
             b.mesh.material.map = b.textura;
             gsap.fromTo(b.mesh.scale, { x: 0.01, y: 0.01, z: 0.01 }, { x: 1, y: 1, z: 1, duration: 0.3, ease: 'back.out(2)' });
         });
+    }
+
+    // ---------- Relleno del bombo al reiniciar ----------
+    // Las bolas se lanzan una a una desde delante de la tarima, dibujan un arco y entran por arriba
+    // en la jaula; al llegar pasan a la física. `alEntrar(i, total)` avisa de cada una (sonido).
+    let relleno = null;
+    const entrando = new Map(); // bola → tween de su vuelo
+
+    function lanzarAlBombo(b, duracion, alEntrar) {
+        const origen = V().set((Math.random() - 0.5) * 7, SUELO + 0.6, 4.6 + Math.random() * 1.6);
+        const destino = V().set((Math.random() - 0.5) * 1.1, R - r - 0.25, (Math.random() - 0.5) * 1.1);
+        const control = V().set((origen.x + destino.x) / 2, R + 2.6 + Math.random() * 1.4, (origen.z + destino.z) / 2 + 0.6);
+        const eje = V().set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
+        const t = { u: 0 };
+        let ultimo = 0;
+        const tween = gsap.to(t, {
+            u: 1,
+            duration: duracion,
+            ease: 'none',
+            onStart() {
+                b.estado = 'entrando';
+                b.mesh.material.map = b.textura;
+                b.mesh.visible = true;
+                b.mesh.position.copy(origen);
+                gsap.fromTo(b.mesh.scale, { x: 0.3, y: 0.3, z: 0.3 }, { x: 1, y: 1, z: 1, duration: duracion * 0.4, ease: 'back.out(2)' });
+            },
+            onUpdate() {
+                // Bézier cuadrática: sube desde la tarima y cae dentro de la jaula
+                const u = t.u;
+                const a = (1 - u) * (1 - u);
+                const c = 2 * (1 - u) * u;
+                const d = u * u;
+                b.mesh.position.set(
+                    a * origen.x + c * control.x + d * destino.x,
+                    a * origen.y + c * control.y + d * destino.y,
+                    a * origen.z + c * control.z + d * destino.z,
+                );
+                b.mesh.rotateOnWorldAxis(eje, (u - ultimo) * 14);
+                ultimo = u;
+            },
+            onComplete() {
+                entrando.delete(b);
+                b.estado = 'bombo';
+                b.p.copy(destino);
+                b.v.set((Math.random() - 0.5) * 3, -6, (Math.random() - 0.5) * 3);
+                b.w.set((Math.random() - 0.5) * 20, (Math.random() - 0.5) * 20, (Math.random() - 0.5) * 20);
+                b.mesh.position.copy(b.p);
+                alEntrar?.();
+            },
+        });
+        entrando.set(b, tween);
+        return tween;
+    }
+
+    // Termina al instante el vuelo de una bola (si el sorteo la necesita) o de todas
+    function terminarRelleno(b = null) {
+        if (b) {
+            entrando.get(b)?.progress(1);
+            return;
+        }
+        relleno?.progress(1);
+        for (const tween of [...entrando.values()]) tween.progress(1);
+    }
+
+    function rellenar({ alEntrar } = {}) {
+        terminarRelleno();
+        const fuera = bolas.filter((x) => x.estado === 'fuera');
+        if (!fuera.length) return;
+        if (reducirMovimiento) {
+            fuera.forEach((b, i) => meterBola(b, i * 0.01));
+            return;
+        }
+        // Orden aleatorio y, como mucho, unos 3 s para que entren todas
+        for (let i = fuera.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [fuera[i], fuera[j]] = [fuera[j], fuera[i]];
+        }
+        const paso = Math.min(0.09, 3 / fuera.length);
+        relleno = gsap.timeline();
+        relleno.to(bombo, { omega: 3, duration: 0.5, ease: 'power2.out' }, 0);
+        fuera.forEach((b, i) => {
+            relleno.add(lanzarAlBombo(b, 0.85 + Math.random() * 0.25, () => alEntrar?.(i, fuera.length)), 0.25 + i * paso);
+        });
+        relleno.call(() => sacudir(0.25), null, '>-0.05');
+        relleno.to(bombo, { omega: GIRO_REPOSO, duration: 1.4, ease: 'power2.inOut' }, '>');
     }
 
     // ---------- Encuadre según el tamaño de la pantalla ----------
@@ -693,6 +779,7 @@ export function crearEscenario(canvas, { columnaDe, colores, reducirMovimiento =
         tlSorteo?.progress(1);
         const b = porNumero.get(numero);
         const f = reducirMovimiento ? 0.6 : ritmo;
+        terminarRelleno(b); // si aún estaba entrando en el bombo, entra ya
         const tl = gsap.timeline();
         tlSorteo = tl;
 
@@ -828,12 +915,10 @@ export function crearEscenario(canvas, { columnaDe, colores, reducirMovimiento =
         return tl;
     }
 
-    function reiniciar() {
+    function reiniciar({ alEntrar } = {}) {
         tlSorteo?.progress(1);
         luces.modo = 'persecucion';
-        gsap.to(bombo, { omega: 4.5, duration: 0.4, yoyo: true, repeat: 1 });
-        gsap.to(bombo, { omega: GIRO_REPOSO, duration: 1.2, delay: 0.8 });
-        bolas.filter((b) => b.estado === 'fuera').forEach((b, i) => meterBola(b, 0.2 + i * 0.03));
+        rellenar({ alEntrar });
         gsap.to(focos, { intensidad: 0.22, duration: 0.6 });
     }
 

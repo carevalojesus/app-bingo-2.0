@@ -6,6 +6,20 @@ import * as juego from './juego.js';
 
 const MAX_MENSAJE = 4096;
 const CLAVE = 'sala';
+const MAX_LOGO = 60 * 1024;
+const TIPOS_LOGO = ['image/png', 'image/jpeg', 'image/webp'];
+
+// Logo del evento: data URL PNG, JPEG o WebP de hasta 60 KB, solo en el plan Pro.
+// Devuelve { tipo, datos (base64) } o null; lanza ErrorJuego si no vale.
+function leerLogo(dataUrl, pro) {
+    if (dataUrl === undefined || dataUrl === null || dataUrl === '') return null;
+    if (!pro) throw new juego.ErrorJuego('El logo del evento es del plan Pro.');
+    const partes = typeof dataUrl === 'string' && dataUrl.match(/^data:(image\/[a-z]+);base64,([A-Za-z0-9+/=]+)$/);
+    if (!partes || !TIPOS_LOGO.includes(partes[1])) throw new juego.ErrorJuego('El logo debe ser una imagen PNG, JPEG o WebP.');
+    if (partes[2].length * 0.75 > MAX_LOGO) throw new juego.ErrorJuego('El logo es demasiado grande (máximo 60 KB).');
+    return { tipo: partes[1], datos: partes[2] };
+}
+
 // Una sala sin actividad durante este tiempo (y sin nadie conectado) se borra
 export const CADUCIDAD_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -24,8 +38,12 @@ const ACCIONES = {
     elegirCarton: (sala, m, s) => juego.elegirCarton(sala, s.jugadorId, m.numero, m.numeros),
     repetir: (sala, m, s) => juego.fijarRepetir(sala, s.jugadorId, m.valor),
     detenerCuenta: (sala) => juego.detenerCuenta(sala),
+    pedirFichas: (sala, m, s, ahora) => juego.pedirFichas(sala, s.jugadorId, m.cantidad, ahora),
+    admitir: (sala, m, s, ahora) => juego.admitir(sala, m.jugadorId, ahora),
+    darFichas: (sala, m, s, ahora) => juego.darFichas(sala, m.jugadorId, m.cantidad, ahora),
+    vincular: (sala, m, s, ahora) => juego.crearVinculo(sala, ahora),
     soltarCarton: (sala, m, s) => juego.soltarCarton(sala, s.jugadorId, m.numero),
-    bingo: (sala, m, s, ahora) => juego.cantarBingo(sala, s.jugadorId, m.numero, ahora),
+    bingo: (sala, m, s, ahora) => juego.cantarBingo(sala, s.jugadorId, m.numero, ahora, m.marcas),
     iniciar: (sala, m, s, ahora) => juego.iniciar(sala, ahora),
     pausar: (sala) => juego.pausar(sala),
     reanudar: (sala, m, s, ahora) => juego.reanudar(sala, ahora),
@@ -64,9 +82,11 @@ export class Sala extends DurableObject {
 
         if (url.pathname === '/crear' && request.method === 'POST') {
             if (this.sala) return json({ error: 'Ese código ya está en uso.' }, 409);
-            const { codigo, config } = await request.json();
+            const { codigo, config, pro } = await request.json();
+            let logo = null;
             try {
-                this.sala = juego.crearSala(codigo, config, { prueba: this.prueba });
+                logo = leerLogo(config?.logo, Boolean(pro));
+                this.sala = juego.crearSala(codigo, config, { prueba: this.prueba, pro });
                 // Solo en modo prueba: caducidad corta para poder probarla
                 if (this.prueba && Number.isInteger(config?.caducidadMs) && config.caducidadMs >= 300) {
                     this.sala.caducidadMs = config.caducidadMs;
@@ -75,13 +95,41 @@ export class Sala extends DurableObject {
                 if (error instanceof juego.ErrorJuego) return json({ error: error.message }, 400);
                 throw error;
             }
+            if (logo) {
+                await this.ctx.storage.put('logo', logo);
+                this.sala.logo = crypto.randomUUID().slice(0, 8);
+            }
             await this.guardar();
-            return json({ codigo, tokenAnfitrion: this.sala.tokenAnfitrion }, 201);
+            return json({ codigo, tokenAnfitrion: this.sala.tokenAnfitrion, pro: Boolean(pro) }, 201);
         }
 
         if (!this.sala) return json({ error: 'Sala no encontrada.' }, 404);
 
         if (url.pathname === '/info') return json(juego.resumen(this.sala));
+
+        // Vincular otro dispositivo como anfitrión con el código de 6 cifras que muestra el show
+        if (url.pathname === '/vincular' && request.method === 'POST') {
+            const { codigo } = await request.json().catch(() => ({}));
+            try {
+                const tokenAnfitrion = juego.usarVinculo(this.sala, codigo, Date.now());
+                await this.guardar();
+                return json({ tokenAnfitrion });
+            } catch (error) {
+                await this.guardar(); // cuenta el fallo
+                if (error instanceof juego.ErrorJuego) return json({ error: error.message }, 400);
+                throw error;
+            }
+        }
+
+        // Logo del evento (Pro). La URL lleva ?v=versión, así que se puede cachear sin miedo.
+        if (url.pathname === '/logo') {
+            const logo = this.sala.logo ? await this.ctx.storage.get('logo') : null;
+            if (!logo) return json({ error: 'Esta sala no tiene logo.' }, 404);
+            const bytes = Uint8Array.from(atob(logo.datos), (c) => c.charCodeAt(0));
+            return new Response(bytes, {
+                headers: { 'content-type': logo.tipo, 'cache-control': 'public, max-age=86400', 'x-content-type-options': 'nosniff' },
+            });
+        }
 
         if (url.pathname === '/ws') {
             if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
@@ -164,7 +212,7 @@ export class Sala extends DurableObject {
             ws.serializeAttachment({ rol: 'anfitrion' });
             this.actualizarConexiones();
             await this.guardar();
-            enviar(ws, { tipo: 'bienvenida', rol: 'anfitrion', estado: juego.instantanea(sala) });
+            enviar(ws, { tipo: 'bienvenida', rol: 'anfitrion', estado: juego.instantanea(sala, { anfitrion: true }) });
             return this.difundir([], ws);
         }
 
@@ -326,13 +374,18 @@ export class Sala extends DurableObject {
     }
 
     // Eventos (cada `bola` va antes del `estado` que la incluye) y después la instantánea a todos
+    // `para`: un jugadorId o 'anfitrion'. El anfitrión recibe además lo que solo ve él (peticiones y registro).
     difundir(eventos, excluirEstado = null) {
         const sockets = this.identificados();
+        const esAnfitrion = (ws) => ws.deserializeAttachment().rol === 'anfitrion';
         for (const { para, ...mensaje } of eventos) {
-            const destino = para ? sockets.filter((ws) => ws.deserializeAttachment().jugadorId === para) : sockets;
+            const destino = !para ? sockets
+                : para === 'anfitrion' ? sockets.filter(esAnfitrion)
+                    : sockets.filter((ws) => ws.deserializeAttachment().jugadorId === para);
             destino.forEach((ws) => enviar(ws, mensaje));
         }
-        const estado = { tipo: 'estado', estado: juego.instantanea(this.sala) };
-        sockets.filter((ws) => ws !== excluirEstado).forEach((ws) => enviar(ws, estado));
+        const publico = { tipo: 'estado', estado: juego.instantanea(this.sala) };
+        const privado = { tipo: 'estado', estado: juego.instantanea(this.sala, { anfitrion: true }) };
+        sockets.filter((ws) => ws !== excluirEstado).forEach((ws) => enviar(ws, esAnfitrion(ws) ? privado : publico));
     }
 }

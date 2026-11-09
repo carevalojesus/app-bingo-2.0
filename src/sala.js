@@ -20,6 +20,62 @@ if (sinConexion) {
     $('crearBtn').disabled = true;
 }
 
+// ---------- Plan: código Pro y logo ----------
+const PLAN_GRATIS = { premios: 1 };
+let logo = null; // data URL ya reducida
+
+const tieneCodigo = () => $('codigoPro').value.replace(/[^A-Za-z0-9]/g, '').length > 0;
+
+function pintarPlan() {
+    $('campoLogo').classList.toggle('hidden', !tieneCodigo());
+    $('notaPremios').textContent = tieneCodigo()
+        ? 'Con código Pro: hasta 3 premios encadenados.'
+        : 'El plan gratis incluye 1 premio; con código Pro, hasta 3.';
+    pintarResumen();
+}
+$('codigoPro').addEventListener('input', (e) => {
+    e.target.value = e.target.value.toUpperCase();
+    pintarPlan();
+});
+
+// Reduce la imagen a 256 px como máximo (WebP o, si el navegador no sabe, PNG)
+async function reducirImagen(archivo) {
+    const imagen = await createImageBitmap(archivo);
+    const escala = Math.min(1, 256 / Math.max(imagen.width, imagen.height));
+    const lienzo = document.createElement('canvas');
+    lienzo.width = Math.max(1, Math.round(imagen.width * escala));
+    lienzo.height = Math.max(1, Math.round(imagen.height * escala));
+    lienzo.getContext('2d').drawImage(imagen, 0, 0, lienzo.width, lienzo.height);
+    let url = lienzo.toDataURL('image/webp', 0.85);
+    if (!url.startsWith('data:image/webp')) url = lienzo.toDataURL('image/png');
+    return url;
+}
+
+function pintarLogo() {
+    $('vistaLogo').innerHTML = logo ? `<img src="${logo}" alt="Logo del evento" class="h-full w-full object-contain">` : 'Logo';
+    $('vistaLogo').classList.toggle('border-dashed', !logo);
+    $('quitarLogo').classList.toggle('hidden', !logo);
+}
+
+$('archivoLogo').addEventListener('change', async (e) => {
+    const archivo = e.target.files?.[0];
+    e.target.value = '';
+    if (!archivo) return;
+    try {
+        const url = await reducirImagen(archivo);
+        if (url.length * 0.75 > 60 * 1024) throw new Error('grande');
+        logo = url;
+        mostrarErrores([]);
+    } catch (error) {
+        logo = null;
+        mostrarErrores([error.message === 'grande'
+            ? 'El logo sigue pesando más de 60 KB tras reducirlo. Prueba con una imagen más sencilla.'
+            : 'No se pudo leer esa imagen. Usa un PNG, JPG o WebP.']);
+    }
+    pintarLogo();
+});
+$('quitarLogo').addEventListener('click', () => { logo = null; pintarLogo(); });
+
 // ---------- Tipo de juego ----------
 let tipo = 'carton';
 
@@ -30,6 +86,43 @@ const AYUDA_TIPO = {
         + 'si varios lo hacen con la misma bola, el pozo se reparte. Nadie tiene que cantar.',
 };
 const UNIDAD = { carton: ['cartón', 'cartones'], fila: ['fila', 'filas'], elige: ['jugada', 'jugadas'] };
+const NOMBRE_TIPO = { carton: 'Bingo clásico', fila: 'Fila de 5', elige: 'Elige tus 5' };
+const NOMBRE_MARCADO = { libre: 'cada jugador elige cómo marcar', auto: 'marcado automático', manual: 'marcado a mano' };
+let marcado = 'libre';
+
+document.querySelectorAll('[data-marcado]').forEach((boton) => boton.addEventListener('click', () => {
+    marcado = boton.dataset.marcado;
+    document.querySelectorAll('[data-marcado]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.marcado === marcado)));
+    pintarResumen();
+}));
+
+// Una línea con lo que se va a crear, para revisarlo antes de pulsar el botón
+function pintarResumen() {
+    const [uno, varios] = UNIDAD[tipo];
+    const numero = (id) => Number($(id).value) || 0;
+    const partes = [NOMBRE_TIPO[tipo]];
+    if (tipo === 'fila') partes.push(`15 filas a ${numero('precioCarton')} fichas`);
+    else partes.push(`${numero('cartones')} ${varios} a ${numero('precioCarton')} fichas`);
+    partes.push(`máx. ${numero('maxCartonesPorJugador')} por jugador`);
+    if (tipo === 'carton') {
+        partes.push(premios.length === 1 ? '1 premio' : `${premios.length} premios`);
+        partes.push(NOMBRE_MARCADO[marcado]);
+    }
+    const extras = [$('admision').checked && 'tú admites y das las fichas', $('rondasSeguidas').checked && 'rondas seguidas', $('bolaDorada').checked && 'bola dorada',
+        numero('botePorcentaje') > 0 && 'bote'].filter(Boolean);
+    if (extras.length) partes.push(extras.join(', '));
+    partes.push(tieneCodigo() ? 'plan Pro (hasta 100 jugadores)' : 'plan gratis (hasta 15 jugadores)');
+    $('resumenSala').textContent = partes.join(' · ');
+    void uno;
+}
+$('admision').addEventListener('change', (e) => {
+    $('campoMensajeFichas').classList.toggle('hidden', !e.target.checked);
+    // Si las das tú, lo normal es que nadie reciba fichas automáticas
+    if (e.target.checked && $('fichasIniciales').value === '100') $('fichasIniciales').value = '0';
+    if (!e.target.checked && $('fichasIniciales').value === '0') $('fichasIniciales').value = '100';
+});
+$('formSala').addEventListener('input', pintarResumen);
+$('formSala').addEventListener('change', pintarResumen);
 
 function pintarTipo() {
     const auto = tipo !== 'carton';
@@ -41,6 +134,8 @@ function pintarTipo() {
     document.querySelector('[data-etiqueta-total]').textContent = tipo === 'elige' ? 'Máximo de jugadas' : 'Cartones a la venta';
     document.querySelectorAll('[data-unidad]').forEach((el) => { el.textContent = UNIDAD[tipo][0]; });
     document.querySelectorAll('[data-unidades]').forEach((el) => { el.textContent = UNIDAD[tipo][1]; });
+    $('campoMarcado').classList.toggle('hidden', auto);
+    pintarResumen();
 }
 
 document.querySelectorAll('[data-tipo]').forEach((boton) => boton.addEventListener('click', () => {
@@ -50,10 +145,7 @@ document.querySelectorAll('[data-tipo]').forEach((boton) => boton.addEventListen
 }));
 
 // ---------- Premios ----------
-let premios = [
-    { modalidad: 'linea', porcentaje: 30 },
-    { modalidad: 'lleno', porcentaje: 70 },
-];
+let premios = [{ modalidad: 'lleno', porcentaje: 100 }];
 
 function pintarPremios() {
     $('premios').innerHTML = premios.map((p, i) => `
@@ -72,6 +164,7 @@ function pintarPremios() {
         </li>`).join('');
     $('agregarPremio').disabled = premios.length >= MAX_PREMIOS;
     pintarSuma();
+    pintarResumen();
 }
 
 function pintarSuma() {
@@ -106,6 +199,13 @@ $('agregarPremio').addEventListener('click', () => {
 function leerConfig() {
     const errores = [];
     const config = { tipo, nombre: $('nombre').value.trim() };
+    if (tieneCodigo()) {
+        config.codigoPro = $('codigoPro').value.trim();
+        if (logo) config.logo = logo;
+    }
+    if (tipo === 'carton') config.marcado = marcado;
+    config.admision = $('admision').checked;
+    if (config.admision) config.mensajeFichas = $('mensajeFichas').value.trim().slice(0, 200);
     if (config.nombre.length > 40) errores.push('El nombre puede tener como máximo 40 caracteres.');
     const fila = tipo === 'fila';
 
@@ -149,6 +249,9 @@ function leerConfig() {
         const suma = config.premios.reduce((t, p) => t + p.porcentaje, 0);
         if (suma !== 100) errores.push(`Los porcentajes de los premios deben sumar 100 (ahora suman ${suma}).`);
     }
+    if (!tieneCodigo() && config.premios.length > PLAN_GRATIS.premios) {
+        errores.push('El plan gratis incluye 1 premio. Quita los demás o escribe tu código Pro (hasta 3 premios).');
+    }
     return { config, errores };
 }
 
@@ -167,6 +270,9 @@ $('formSala').addEventListener('submit', async (e) => {
     if (sinConexion) return mostrarErrores(['Abre esta página desde el servidor para crear salas.']);
     const { config, errores } = leerConfig();
     mostrarErrores(errores);
+    // Si el error está en una sección plegada, se abre
+    if (errores.some((e) => /bote|velocidad|fichas al|pozo/i.test(e))) $('masOpciones').open = true;
+    if (errores.some((e) => /código Pro|plan gratis/i.test(e))) $('seccionPro').open = true;
     if (errores.length) return $('errores').scrollIntoView({ behavior: 'smooth', block: 'center' });
 
     const boton = $('crearBtn');

@@ -8,6 +8,7 @@ import { htmlCarton } from './carton-html.js';
 import { extraerBola } from './azar.js';
 import { salaEnUrl, iniciarAnfitrion } from './en-linea/anfitrion.js';
 import { crearPanelSonido } from './volumen.js';
+import { cuentaAtras } from './cuenta.js';
 import { MODOS_VOZ, leerModoVoz, guardarModoVoz, infoModoVoz, textoBola, textoMomento } from './narrador.js';
 
 const LETRAS = [
@@ -246,18 +247,51 @@ function programarSiguiente() {
     if (!estado.jugando) proximaBola.pause();
 }
 
+// Cuenta atrás antes de la primera bola (también la usa el modo en línea): un golpe por número
+let cuentaInicial = null;
+function tickCuenta(n) {
+    if (!estado.sonido) return;
+    if (n > 0) sfx.golpe(0.55);
+    else sfx.campana();
+}
+
 function iniciar() {
     if (estado.jugando || estado.terminado) return;
     estado.jugando = true;
+    actualizarBotonPlay();
+    // Primera bola de la partida: 3, 2, 1, ¡Ya! para que todos estén atentos
+    if (!proximaBola && estado.bolas.length === 0) {
+        const id = partida;
+        cuentaInicial = cuentaAtras({
+            ms: 4000,
+            alTick: tickCuenta,
+            alTerminar: () => {
+                cuentaInicial = null;
+                if (id === partida && estado.jugando) arrancarSorteo();
+            },
+        });
+        return;
+    }
+    arrancarSorteo();
+}
+
+function arrancarSorteo() {
     estado.inicioTramo = performance.now();
     relojTiempo = setInterval(pintarTiempo, 250);
     if (proximaBola) proximaBola.resume();
     else sacarBola();
-    actualizarBotonPlay();
 }
 
 function pausar() {
     if (!estado.jugando) return;
+    if (cuentaInicial) {
+        // Pausa durante la cuenta atrás: se cancela y no ha empezado nada
+        cuentaInicial.cancelar();
+        cuentaInicial = null;
+        estado.jugando = false;
+        actualizarBotonPlay();
+        return;
+    }
     estado.tiempoAcumulado = tiempoTranscurrido();
     estado.jugando = false;
     clearInterval(relojTiempo);
@@ -322,7 +356,10 @@ function reiniciar({ aviso = '¡Las bolas vuelven al bombo!' } = {}) {
     $('textoActual').textContent = '—';
     $('fin').classList.replace('grid', 'hidden');
 
-    escenario.reiniciar();
+    // Las bolas vuelven al bombo una a una, cada una con su tintineo (uno de cada dos, para no saturar)
+    escenario.reiniciar({
+        alEntrar: (i, total) => { if (estado.sonido && i % 2 === 0) sfx.tintineo(total > 1 ? i / (total - 1) : 0.5); },
+    });
     actualizarCuentas();
     pintarTiempo();
     actualizarBotonPlay();
@@ -797,6 +834,7 @@ async function arrancar() {
             cantadas: () => estado.salidas.size,
             sonido: () => estado.sonido,
             sacudir: () => escenario.sacudir?.(),
+            cuentaAtras: (ms) => cuentaAtras({ ms, alTick: tickCuenta }),
             voz: textoMomento,
             columnaDe,
             colores: COLORES,

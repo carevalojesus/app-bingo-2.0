@@ -34,7 +34,7 @@ globalThis.window = { AudioContext: ContextoFalso };
 const sfx = await import('../src/efectos.js');
 
 test('todos los efectos suenan sin errores y pasan por el volumen general', () => {
-    for (const efecto of ['redoble', 'silbido', 'campana', 'golpe', 'fanfarria']) {
+    for (const efecto of ['redoble', 'silbido', 'campana', 'golpe', 'fanfarria', 'tintineo']) {
         conexiones.length = 0;
         assert.doesNotThrow(() => sfx[efecto](), efecto);
         assert.ok(conexiones.length > 0, `${efecto} conecta algo`);

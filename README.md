@@ -69,6 +69,19 @@ central). En el show: QR para unirse, narrador con frases o en inglés/portugué
 de los jugadores, repetición de la bola decisiva y ranking de la noche. En el móvil: aviso «¡te falta 1!»
 e historial de partidas.
 
+**Planes.** Gratis: hasta 15 jugadores y 1 premio. Pro (código `PRO-…` al crear la sala): hasta
+100 jugadores, 3 premios y el logo del evento en el show y en los móviles. Precios en `precios.html`
+(S/ 25 por evento de 24 h, S/ 60 al mes). Los códigos se generan con `npm run codigo` (`-- --dias 30`
+para un mes) usando la clave de `.dev.vars`, que tiene que ser la misma que el secreto
+`CODIGOS_SECRETO` de Cloudflare (`npx wrangler secret put CODIGOS_SECRETO`).
+Los códigos se gestionan en **`admin.html`** (clave `ADMIN_CLAVE`, también en `.dev.vars` y como
+secreto de Cloudflare): generar y enviar por WhatsApp, anular, ingresos y salas creadas.
+
+**Admisión y fichas.** Al crear la sala puedes elegir que cada jugador entre «en espera»: te pide fichas
+y tú lo admites y se las asignas (o corriges) desde el show o desde tu móvil (`anfitrion.html`, que se vincula
+con un código de 6 cifras de un solo uso). Todo queda en un registro que puedes descargar en CSV. La app no
+cobra ni paga nada: ver `terminos.html`.
+
 **Partida verificable.** Antes de empezar, el servidor publica el *compromiso* (SHA-256 de su semilla
 secreta). Al empezar se combinan las semillas que generan los móviles de los jugadores, y de ambas
 salen la serie de los cartones y el orden de las bolas. Al terminar se revela la semilla del servidor

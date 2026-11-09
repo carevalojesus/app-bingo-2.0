@@ -55,7 +55,8 @@
 
 <header class="sticky top-0 z-30 border-b-[3px] border-tinta bg-escenario/95 backdrop-blur">
     <div class="mx-auto flex max-w-xl items-center gap-2 px-4 py-2">
-        <div class="flex shrink-0 gap-0.5" aria-hidden="true">
+        <img id="logoSala" alt="" class="hidden h-9 max-w-[5.5rem] shrink-0 rounded-lg border-[2.5px] border-tinta bg-white object-contain p-0.5">
+        <div id="logoBingo" class="flex shrink-0 gap-0.5" aria-hidden="true">
             <span class="grid h-7 w-7 place-items-center rounded-md border-[2.5px] border-tinta bg-tomate font-display text-sm" style="transform:rotate(-6deg)">B</span>
             <span class="grid h-7 w-7 place-items-center rounded-md border-[2.5px] border-tinta bg-girasol font-display text-sm" style="transform:rotate(5deg)">S</span>
         </div>
@@ -99,7 +100,7 @@
             <p id="errorEntrar" class="mt-3 hidden font-black text-tomate" role="alert"></p>
 
             <button id="botonEntrar" type="submit" class="boton mt-5 h-14 w-full bg-girasol text-lg">Entrar</button>
-            <p class="mt-3 text-xs font-bold text-tinta/70">Se juega con fichas virtuales: no hay dinero. Sin cuentas: este móvil recuerda tu sitio en la sala.</p>
+            <p class="mt-3 text-xs font-bold text-tinta/70">Las fichas son virtuales y no valen dinero en la app. Sin cuentas: este móvil recuerda tu sitio en la sala. <a href="terminos.html" target="_blank" class="underline">Términos</a></p>
         </form>
         <div id="historialEntrar" class="mt-5"></div>
     </section>
