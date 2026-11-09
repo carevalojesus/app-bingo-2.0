@@ -475,3 +475,38 @@ body.sala-lobby #pizarraFondo { display: none; }
     line-height: 0.95;
 }
 .repeticion-bola small { font-size: 0.32em; line-height: 1; }
+
+/* ---------- Panel de sonido (show y móvil) ---------- */
+.panel-sonido {
+    position: fixed;
+    z-index: 70;
+    width: min(16.5rem, calc(100vw - 2rem));
+    padding: 1rem;
+}
+.interruptor-sonido {
+    position: relative;
+    width: 3.25rem;
+    height: 1.9rem;
+    flex-shrink: 0;
+    border: 2.5px solid #14112b;
+    border-radius: 999px;
+    background: #d8cfe6;
+    transition: background-color 0.2s;
+}
+.interruptor-sonido[aria-checked="true"] { background: #19c3a0; }
+.interruptor-sonido .interruptor-bola {
+    position: absolute;
+    top: 50%;
+    left: 0.2rem;
+    width: 1.2rem;
+    height: 1.2rem;
+    translate: 0 -50%;
+    border: 2.5px solid #14112b;
+    border-radius: 999px;
+    background: #fff6e5;
+    transition: left 0.2s;
+}
+.interruptor-sonido[aria-checked="true"] .interruptor-bola { left: calc(100% - 1.4rem); }
+.interruptor-sonido:focus-visible { outline: 4px solid #ffc43d; outline-offset: 2px; }
+.control-volumen { accent-color: #ff5a36; height: 1.75rem; cursor: pointer; }
+.control-volumen:disabled { cursor: not-allowed; }

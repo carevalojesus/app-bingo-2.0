@@ -7,6 +7,7 @@ import { generarCarton, verificar, parsearCodigo, PATRONES, normalizarSerie, ser
 import { htmlCarton } from './carton-html.js';
 import { extraerBola } from './azar.js';
 import { salaEnUrl, iniciarAnfitrion } from './en-linea/anfitrion.js';
+import { crearPanelSonido } from './volumen.js';
 import { MODOS_VOZ, leerModoVoz, guardarModoVoz, infoModoVoz, textoBola, textoMomento } from './narrador.js';
 
 const LETRAS = [
@@ -633,8 +634,7 @@ function pedirReinicio() {
 
 function aplicarSonido() {
     const btn = $('sonidoBtn');
-    btn.setAttribute('aria-pressed', String(estado.sonido));
-    btn.setAttribute('aria-label', estado.sonido ? 'Sonido y voz activados' : 'Sonido y voz desactivados');
+    btn.setAttribute('aria-label', estado.sonido ? 'Sonido activado: abrir controles de volumen' : 'Sonido apagado: abrir controles de volumen');
     $('iconoSonidoOn').classList.toggle('hidden', !estado.sonido);
     $('iconoSonidoOff').classList.toggle('hidden', estado.sonido);
 }
@@ -671,12 +671,19 @@ $('pizarraBtn').addEventListener('click', () => alternarPizarra());
 $('cerrarPizarra').addEventListener('click', () => alternarPizarra(false));
 $('pizarraFondo').addEventListener('click', () => alternarPizarra(false));
 
-$('sonidoBtn').addEventListener('click', () => {
-    estado.sonido = !estado.sonido;
-    if (!estado.sonido) sfx.callar();
-    guardarPreferencia('sonido', estado.sonido);
-    aplicarSonido();
-    avisar(estado.sonido ? 'Sonido y voz activados' : 'Sonido apagado');
+// El altavoz abre el panel de sonido: silenciar y volumen de efectos y voz por separado
+crearPanelSonido($('sonidoBtn'), {
+    activo: () => estado.sonido,
+    alternar: () => {
+        estado.sonido = !estado.sonido;
+        if (!estado.sonido) sfx.callar();
+        guardarPreferencia('sonido', estado.sonido);
+        aplicarSonido();
+    },
+    probar: (que) => {
+        if (que !== 'voz') sfx.campana();
+        if (que !== 'efectos') gsap.delayedCall(que === 'todo' ? 0.4 : 0, () => sfx.cantar(textoBola('B', 15)));
+    },
 });
 
 // Voz del narrador: normal, con frases, inglés o portugués

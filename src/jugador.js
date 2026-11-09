@@ -4,6 +4,7 @@
 import { conectarSala, consultarSala, CLAVES, normalizarCodigo } from './en-linea/cliente.js';
 import { htmlCarton } from './carton-html.js';
 import * as sfx from './efectos.js';
+import { crearPanelSonido } from './volumen.js';
 import { nuevaSemilla, verificarPartida } from './justo.js';
 import { esModoFila, esModoElige, esModoAuto, analizarJugada, numerosDeFila } from './filas.js';
 import {
@@ -1254,8 +1255,7 @@ async function arrancar() {
 // ---------- Sonido ----------
 function dibujarSonido() {
     const boton = $('botonSonido');
-    boton.setAttribute('aria-pressed', String(app.sonido));
-    boton.setAttribute('aria-label', app.sonido ? 'Sonido activado' : 'Sonido desactivado');
+    boton.setAttribute('aria-label', app.sonido ? 'Sonido activado: abrir controles de volumen' : 'Sonido apagado: abrir controles de volumen');
     $('ondasSonido').classList.toggle('hidden', !app.sonido);
     $('tachaSonido').classList.toggle('hidden', app.sonido);
 }
@@ -1316,11 +1316,19 @@ $('vistaSala').addEventListener('click', (e) => {
     if (boton) cambiarModoMarcado(boton.dataset.modo === 'auto');
 });
 
-$('botonSonido').addEventListener('click', () => {
-    app.sonido = !app.sonido;
-    guardarPreferencia('sonido', app.sonido);
-    dibujarSonido();
-    if (app.sonido) sonar('campana');
+// El altavoz abre el panel de sonido: silenciar y volumen de efectos y voz por separado
+crearPanelSonido($('botonSonido'), {
+    activo: () => app.sonido,
+    alternar: () => {
+        app.sonido = !app.sonido;
+        if (!app.sonido) sfx.callar();
+        guardarPreferencia('sonido', app.sonido);
+        dibujarSonido();
+    },
+    probar: (que) => {
+        if (que !== 'voz') sfx.campana();
+        if (que !== 'efectos') setTimeout(() => sfx.cantar('B, 15'), que === 'todo' ? 400 : 0);
+    },
 });
 
 $('botonSalir').addEventListener('click', () => {
