@@ -48,11 +48,13 @@ export function conectarSala(codigo, { hola, alMensaje, alCambiarConexion = () =
         ws.addEventListener('message', (evento) => {
             let mensaje;
             try { mensaje = JSON.parse(evento.data); } catch { return; }
-            if (mensaje.tipo === 'expulsado') cerrada = true;
+            if (mensaje.tipo === 'expulsado' || mensaje.tipo === 'salaCerrada') cerrada = true;
             alMensaje(mensaje);
         });
-        ws.addEventListener('close', () => {
+        ws.addEventListener('close', (evento) => {
             clearInterval(latido);
+            // 4004 caducada o inexistente, 4005 cerrada por el administrador, 4006 cerrada por el anfitrión
+            if (evento.code >= 4004 && evento.code <= 4006) cerrada = true;
             if (cerrada) return alCambiarConexion('cerrado');
             const espera = Math.min(8000, 500 * 2 ** intentos++);
             alCambiarConexion('reconectando');

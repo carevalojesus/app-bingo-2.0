@@ -856,6 +856,7 @@ export const ROL_DE_ACCION = {
     nuevaPartida: 'anfitrion',
     velocidad: 'anfitrion',
     expulsar: 'anfitrion',
+    cerrarSala: 'anfitrion',
 };
 
 export function comprobarPermiso(rol, tipo) {

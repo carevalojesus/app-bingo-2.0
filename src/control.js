@@ -86,6 +86,12 @@ function recibir(m) {
         sala = m.estado;
         return pintar();
     }
+    if (m.tipo === 'salaCerrada') {
+        borrarToken(codigo);
+        conexion?.cerrar();
+        sala = null;
+        return mostrarVincular(m.texto || 'La sala se cerró.');
+    }
     if (m.tipo === 'solicitud') {
         vibrar([80, 50, 80]);
         return avisar(`${m.apodo} pide ${fmt(m.cantidad)} fichas`);
@@ -194,6 +200,19 @@ $('descargarRegistro').addEventListener('click', () => {
     enlace.download = `fichas-${codigo}.csv`;
     enlace.click();
     setTimeout(() => URL.revokeObjectURL(enlace.href), 1000);
+});
+
+// Cerrar la sala: dos toques (el segundo confirma)
+$('cerrarSala').addEventListener('click', (e) => {
+    const boton = e.currentTarget;
+    if (boton.dataset.confirmar !== '1') {
+        boton.dataset.confirmar = '1';
+        boton.textContent = (sala?.movimientos || []).length ? '¿Seguro? Se pierde el registro de fichas' : '¿Seguro? Toca otra vez para cerrar';
+        boton.classList.replace('bg-crema', 'bg-tomate');
+        setTimeout(() => { boton.dataset.confirmar = ''; boton.textContent = '🚪 Cerrar sala'; boton.classList.replace('bg-tomate', 'bg-crema'); }, 5000);
+        return;
+    }
+    enviar({ tipo: 'cerrarSala' });
 });
 
 $('desvincular').addEventListener('click', () => {

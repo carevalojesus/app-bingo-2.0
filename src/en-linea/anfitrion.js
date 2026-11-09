@@ -172,6 +172,12 @@ export function iniciarAnfitrion(codigo, show) {
                 return mostrarVinculo(mensaje);
             case 'aviso':
                 return show.avisar(mensaje.texto);
+            case 'salaCerrada':
+                try { localStorage.removeItem(CLAVES.anfitrion(codigo)); } catch { /* */ }
+                return mostrarAvisoSala('Sala cerrada', mensaje.texto || 'Esta sala ya no existe.', [
+                    { texto: 'Crear otra sala', href: 'sala.html', clase: 'bg-girasol' },
+                    { texto: 'Show sin conexión', href: 'show.html', clase: 'bg-crema' },
+                ]);
             case 'error':
                 if (!bienvenido) {
                     conexion?.cerrar();
@@ -273,6 +279,14 @@ export function iniciarAnfitrion(codigo, show) {
             if (ultimo?.estado === 'lobby' && enviar({ tipo: 'iniciar' })) $('empezarBtn').disabled = true;
         });
         $('vincularBtn').addEventListener('click', () => enviar({ tipo: 'vincular' }));
+        $('cerrarSalaBtn').addEventListener('click', () => {
+            $('avisoCerrarSalaCsv').classList.toggle('hidden', !(ultimo?.movimientos || []).length);
+            show.abrirModal('modalCerrarSala');
+        });
+        $('confirmarCerrarSalaBtn').addEventListener('click', () => {
+            show.cerrarModal();
+            enviar({ tipo: 'cerrarSala' });
+        });
         $('lobbyJugadores').addEventListener('click', (ev) => {
             const admitir = ev.target.closest('[data-admitir]');
             if (admitir) {

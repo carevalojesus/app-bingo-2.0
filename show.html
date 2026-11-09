@@ -210,7 +210,10 @@
                     <h2 id="tituloJugadores" class="font-display text-xl leading-none sm:text-2xl">Jugadores</h2>
                     <p class="etiqueta text-tinta/60"><span id="lobbyConectados">0</span> conectados</p>
                 </div>
-                <button id="vincularBtn" type="button" class="boton mt-2 h-9 w-full bg-crema text-[11px]">📱 Controlar desde mi móvil</button>
+                <div class="mt-2 grid grid-cols-[1fr_auto] gap-2">
+                    <button id="vincularBtn" type="button" class="boton h-9 w-full bg-crema text-[11px]">📱 Controlar desde mi móvil</button>
+                    <button id="cerrarSalaBtn" type="button" class="boton h-9 bg-crema px-3 text-[11px]" title="Terminar el evento y borrar la sala">🚪 Cerrar sala</button>
+                </div>
                 <p id="lobbyPlan" class="mt-2 hidden rounded-xl border-[2.5px] border-tinta bg-papel px-3 py-1.5 font-ui text-xs font-bold"></p>
                 <ul id="lobbyJugadores" class="mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1"></ul>
             </section>
@@ -293,6 +296,20 @@
         <div class="mt-6 grid grid-cols-2 gap-3">
             <button class="boton h-12 bg-crema" data-cerrar>Cancelar</button>
             <button id="confirmarResetBtn" class="boton h-12 bg-tomate text-crema">Reiniciar</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modo en línea: confirmar cierre de la sala -->
+<div id="modalCerrarSala" class="fixed inset-0 z-40 hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="tituloCerrarSala">
+    <div class="modal-fondo absolute inset-0 bg-escenario/80" data-cerrar></div>
+    <div class="modal-caja carta relative w-full max-w-sm p-6 text-center shadow-duro-lg">
+        <h2 id="tituloCerrarSala" class="font-display text-2xl sm:text-3xl">¿Cerrar la sala?</h2>
+        <p class="mt-2 font-ui font-bold text-tinta/70">Se borra todo: jugadores, saldos y registro de fichas. Nadie podrá volver a entrar con este código.</p>
+        <p id="avisoCerrarSalaCsv" class="mt-3 hidden rounded-xl border-[2.5px] border-tinta bg-girasol px-3 py-2 font-ui text-sm font-black">Hay movimientos de fichas: descarga antes el registro desde el control del móvil.</p>
+        <div class="mt-6 grid grid-cols-2 gap-3">
+            <button class="boton h-12 bg-crema" data-cerrar data-autofoco>Cancelar</button>
+            <button id="confirmarCerrarSalaBtn" class="boton h-12 bg-tomate text-crema">Cerrar sala</button>
         </div>
     </div>
 </div>

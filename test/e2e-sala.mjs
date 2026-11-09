@@ -439,6 +439,7 @@ async function principal() {
     await planes();
     await administracion();
     await admisionYVinculo();
+    await cierrePorAnfitrion();
     console.log('\nE2E OK');
 }
 
@@ -772,6 +773,31 @@ async function caducidad() {
     await dormir(4500);
     assert.equal((await pedir(`/api/salas/${conGente.codigo}`)).status, 404, 'al quedarse vacía también caduca');
     paso('caducidad: las salas sin actividad se borran; con alguien conectado se aplazan');
+}
+
+async function cierrePorAnfitrion() {
+    const { codigo, tokenAnfitrion } = await nuevaSalaE2E({});
+    const anfitrion = new Cliente('anfitrión', codigo);
+    await anfitrion.abrir({ rol: 'anfitrion', token: tokenAnfitrion });
+    await anfitrion.esperar('bienvenida');
+    const ana = new Cliente('Ana', codigo);
+    await ana.abrir({ rol: 'jugador', apodo: 'Ana' });
+    await ana.esperar('bienvenida');
+
+    ana.enviar({ tipo: 'cerrarSala' });
+    await ana.esperar((m) => m.tipo === 'error' && /anfitrión/.test(m.mensaje), 'un jugador no puede cerrar la sala');
+    assert.equal((await pedir(`/api/salas/${codigo}`)).status, 200);
+
+    let codigoCierre = null;
+    ana.ws.addEventListener('close', (e) => { codigoCierre = e.code; });
+    anfitrion.enviar({ tipo: 'cerrarSala' });
+    const aviso = await ana.esperar('salaCerrada', 'aviso de sala cerrada');
+    assert.match(aviso.texto, /anfitrión cerró la sala/);
+    await anfitrion.esperar('salaCerrada', 'el anfitrión también recibe el cierre');
+    await dormir(300);
+    assert.equal(codigoCierre, 4006, 'código de cierre para no reconectar');
+    assert.equal((await pedir(`/api/salas/${codigo}`)).status, 404, 'la sala ya no existe');
+    paso('cerrar sala: solo el anfitrión; avisa a todos con salaCerrada (4006) y la borra');
 }
 
 let codigoSalida = 0;

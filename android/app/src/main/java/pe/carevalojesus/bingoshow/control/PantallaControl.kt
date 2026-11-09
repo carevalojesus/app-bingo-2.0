@@ -269,6 +269,25 @@ private fun Panel(vm: ControlViewModel, s: Estado) {
         }
     }
 
+    Carta(Modifier.fillMaxWidth().padding(top = 20.dp)) {
+        Text("Terminar el evento", style = display(20.sp))
+        Text(
+            "Cierra la sala para todos: se borran jugadores, saldos y el registro, y nadie podrá volver a entrar con el código.",
+            Modifier.padding(top = 4.dp), style = ui(13.sp, FontWeight.Bold, Colores.tinta.copy(alpha = 0.7f)),
+        )
+        if (vm.porCerrar && s.movimientos.isNotEmpty()) {
+            Recuadro(Modifier.fillMaxWidth().padding(top = 8.dp), fondo = Colores.girasol) {
+                Text("Hay ${s.movimientos.size} movimientos de fichas: comparte antes el CSV del registro si lo necesitas.", style = ui(13.sp, FontWeight.Black))
+            }
+        }
+        Boton(
+            if (vm.porCerrar) "¿Seguro? Toca otra vez para cerrar" else "🚪 Cerrar sala", vm::cerrarSala,
+            Modifier.fillMaxWidth().padding(top = 10.dp), fondo = if (vm.porCerrar) Colores.tomate else Colores.crema,
+            colorTexto = if (vm.porCerrar) Colores.crema else Colores.tinta, alto = 50.dp,
+            estilo = ui(14.sp, FontWeight.Black, if (vm.porCerrar) Colores.crema else Colores.tinta),
+        )
+    }
+
     Text(
         "DESVINCULAR ESTE MÓVIL", Modifier.fillMaxWidth().padding(vertical = 24.dp).clickable { vm.desvincular() },
         style = ui(12.sp, FontWeight.Black, Colores.crema.copy(alpha = 0.7f)).copy(letterSpacing = 1.sp), textAlign = TextAlign.Center,

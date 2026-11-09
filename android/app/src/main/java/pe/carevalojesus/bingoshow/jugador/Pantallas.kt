@@ -100,6 +100,14 @@ fun PantallaEntrar(vm: JugadorViewModel, alEscanear: () -> Unit, alVolver: () ->
         Column(Modifier.widthIn(max = 520.dp).fillMaxWidth()) {
             Text("Entra a jugar", Modifier.padding(top = 18.dp), style = display(30.sp, Colores.crema))
             Text("Escanea el QR de la pantalla del show o escribe el código de la sala.", Modifier.padding(top = 4.dp), style = ui(15.sp, FontWeight.Bold, Colores.crema.copy(alpha = 0.8f)))
+            vm.salaCerrada?.let { texto ->
+                Recuadro(Modifier.fillMaxWidth().padding(top = 14.dp), fondo = Colores.girasol) {
+                    Column {
+                        Text("Sala cerrada", style = display(16.sp))
+                        Text(texto, style = ui(14.sp, FontWeight.Black))
+                    }
+                }
+            }
             if (vm.expulsado) {
                 Recuadro(Modifier.fillMaxWidth().padding(top = 14.dp), fondo = Colores.tomate) {
                     Text("El anfitrión te sacó de la sala.", style = ui(14.sp, FontWeight.Black, Colores.crema))

@@ -149,6 +149,12 @@ class ControlViewModel(app: Application) : AndroidViewModel(app) {
                     actualizarNotificacion()
                 }
             }
+            "salaCerrada" -> {
+                codigo?.let(prefs::borrarTokenAnfitrion)
+                desconectar()
+                errorVincular = m.texto("texto") ?: "La sala se cerró."
+                porCerrar = false
+            }
             "vinculo" -> {
                 codigoShow = m.texto("codigo")
                 codigoShowHasta = m.texto("expira")?.toDoubleOrNull()?.toLong() ?: (System.currentTimeMillis() + 120_000)
@@ -174,6 +180,18 @@ class ControlViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun accion(tipo: String) = enviar(mensaje(tipo))
+
+    /** Cerrar la sala: el primer toque pide confirmación, el segundo cierra (se borra todo). */
+    var porCerrar by mutableStateOf(false)
+    fun cerrarSala() {
+        if (!porCerrar) {
+            porCerrar = true
+            viewModelScope.launch { delay(5000); porCerrar = false }
+            return
+        }
+        porCerrar = false
+        enviar(mensaje("cerrarSala"))
+    }
     fun admitir(id: String) = enviar(mensaje("admitir", "jugadorId" to id))
     fun darFichas(id: String, cantidad: Int) = enviar(mensaje("darFichas", "jugadorId" to id, "cantidad" to cantidad))
     fun rechazar(id: String) {

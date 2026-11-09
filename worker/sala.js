@@ -21,6 +21,8 @@ function leerLogo(dataUrl, pro) {
 }
 
 // Una sala sin actividad durante este tiempo (y sin nadie conectado) se borra
+// Código de cierre del WebSocket cuando el anfitrión cierra la sala (4004 caducada, 4005 administrador)
+export const CIERRE_ANFITRION = 4006;
 export const CADUCIDAD_MS = 7 * 24 * 60 * 60 * 1000;
 
 const json = (datos, status = 200) => Response.json(datos, { status });
@@ -187,6 +189,8 @@ export class Sala extends DurableObject {
             return enviar(ws, { tipo: 'error', mensaje: error.message });
         }
         if (tipo === 'expulsar') return this.expulsar(ws, mensaje.jugadorId);
+        // El anfitrión da por terminado el evento: se borra todo y se echa a todos
+        if (tipo === 'cerrarSala') return this.borrar('El anfitrión cerró la sala. ¡Gracias por jugar!', CIERRE_ANFITRION);
         if (tipo === 'reaccion') return this.reaccion(ws, mensaje, sesion);
         const ahora = Date.now();
         return this.ejecutar(ws, () => ACCIONES[tipo](this.sala, mensaje, sesion, ahora));
@@ -347,11 +351,13 @@ export class Sala extends DurableObject {
         return true;
     }
 
-    // Borra la sala entera: avisa (si hay texto), cierra las conexiones y la quita del registro
+    // Borra la sala entera: avisa (si hay texto), cierra las conexiones y la quita del registro.
+    // `salaCerrada` le dice a los clientes que no intenten reconectar.
     async borrar(aviso, codigoCierre) {
         const codigo = this.sala?.codigo;
         for (const ws of this.ctx.getWebSockets()) {
             if (aviso) enviar(ws, { tipo: 'aviso', texto: aviso });
+            enviar(ws, { tipo: 'salaCerrada', texto: aviso || 'La sala caducó por inactividad.' });
             try { ws.close(codigoCierre, aviso ? 'Sala cerrada' : 'Sala caducada'); } catch { /* ya cerrado */ }
         }
         this.sala = null;

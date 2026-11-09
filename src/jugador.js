@@ -263,8 +263,19 @@ function recibir(mensaje) {
             avisar(mensaje.mensaje || 'Algo salió mal.', 'error', 4500);
             if (app.sala) dibujar();
             break;
+        case 'salaCerrada':
+            salir({ olvidar: true });
+            $('nombreSala').textContent = 'Bingo Show';
+            $('codigoSala').textContent = '';
+            $('tituloExpulsado').textContent = 'Sala cerrada';
+            $('textoExpulsado').textContent = mensaje.texto || 'Esta sala ya no existe.';
+            mostrarVista('vistaExpulsado');
+            vibrar([80, 60, 80]);
+            break;
         case 'expulsado':
             salir({ olvidar: true });
+            $('tituloExpulsado').textContent = 'Fuera de la sala';
+            $('textoExpulsado').textContent = 'El anfitrión te sacó de esta sala. Las fichas de tus cartones se devolvieron.';
             $('nombreSala').textContent = 'Bingo Show';
             $('codigoSala').textContent = '';
             mostrarVista('vistaExpulsado');

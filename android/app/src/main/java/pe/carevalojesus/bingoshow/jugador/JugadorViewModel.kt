@@ -80,6 +80,8 @@ class JugadorViewModel(app: Application) : AndroidViewModel(app) {
     var sala by mutableStateOf<Estado?>(null)
     var conexion by mutableStateOf(EstadoConexion.CERRADO)
     var expulsado by mutableStateOf(false)
+    /** Texto del cierre si el anfitrión cerró la sala (se muestra en la pantalla de entrar). */
+    var salaCerrada by mutableStateOf<String?>(null)
     var logo by mutableStateOf<ImageBitmap?>(null)
     private var logoVersion: String? = null
     private var conexionSala: ConexionSala? = null
@@ -148,6 +150,7 @@ class JugadorViewModel(app: Application) : AndroidViewModel(app) {
         codigo = c
         bienvenido = false
         expulsado = false
+        salaCerrada = null
         sala = null
         miId = null
         logo = null
@@ -245,6 +248,16 @@ class JugadorViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 pendientes.clear()
                 avisar(m.texto("mensaje") ?: "Algo salió mal.", true)
+            }
+            "salaCerrada" -> {
+                val texto = m.texto("texto") ?: "Esta sala ya no existe."
+                val c = codigo
+                salir(olvidar = true)
+                salaCerrada = texto
+                runCatching { ShortcutManagerCompat.removeDynamicShortcuts(contexto, listOf("ultima-sala")) }
+                if (c != null) { codigoEntrada = ""; infoSala = null }
+                Notificador.alerta(contexto, "Sala cerrada", texto)
+                efectos.vibrar(80, 60, 80)
             }
             "expulsado" -> {
                 Notificador.alerta(contexto, "Saliste de la sala", "El anfitrión te sacó de la sala $codigo.")

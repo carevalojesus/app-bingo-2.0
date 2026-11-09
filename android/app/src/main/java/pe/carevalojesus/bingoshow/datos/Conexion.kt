@@ -90,8 +90,18 @@ class ConexionSala(
 
             override fun onMessage(webSocket: WebSocket, text: String) {
                 val m = runCatching { json.parseToJsonElement(text).jsonObject }.getOrNull() ?: return
-                if (m.tipo == "expulsado") cerrada = true
+                if (m.tipo == "expulsado" || m.tipo == "salaCerrada") cerrada = true
                 _mensajes.tryEmit(m)
+            }
+
+            // 4004 caducada o inexistente, 4005 cerrada por el administrador, 4006 cerrada por el anfitrión:
+            // no se reconecta. Si el servidor no mandó salaCerrada (sala que ya no existe), se avisa igual.
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                if (code in 4004..4006 && !cerrada) {
+                    cerrada = true
+                    _mensajes.tryEmit(buildJsonObject { put("tipo", "salaCerrada"); put("texto", "Esta sala ya no existe.") })
+                }
+                webSocket.close(1000, null)
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = alCerrar()
