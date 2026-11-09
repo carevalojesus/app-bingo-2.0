@@ -25,6 +25,11 @@ const GIRO_REPOSO = 1.0;   // ~0,16 vueltas/s: las paletas suben unas pocas bola
 const GIRO_SORTEO = 6.8;   // cerca del crítico: las bolas voltean y rebotan con fuerza
 const GIRO_FIESTA = 8.5;   // por encima del crítico, solo un momento en la celebración
 const SUELO = -3.05;
+const TARIMA_BAJA = -2.8;    // altura del escalón de abajo
+const TARIMA_ALTA = -2.55;   // altura del escalón de arriba (donde se apoya el pedestal)
+const R_TARIMA_ALTA = 2.5;
+const R_TARIMA_BAJA = 3.3;
+const R_BOMBILLAS = 2.95;    // aro de bombillas sobre el escalón de abajo
 const FONDO = '#1a0d36';
 const ANCHO_PIZARRA = 424; // px que ocupa la pizarra en escritorio
 
@@ -118,28 +123,59 @@ export function crearEscenario(canvas, { columnaDe, colores, reducirMovimiento =
     const eje = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1.7, 16), oro);
     eje.rotation.x = Math.PI / 2;
     eje.position.z = -(RJ + 0.85);
-    const poste = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.24, 2.65, 20), laca);
-    poste.position.set(0, -1.32, -(RJ + 1.7));
+    const poste = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.24, -TARIMA_BAJA, 20), laca);
+    poste.position.set(0, TARIMA_BAJA / 2, -(RJ + 1.7));
     const remate = new THREE.Mesh(new THREE.SphereGeometry(0.22, 20, 14), oro);
     remate.position.set(0, 0, -(RJ + 1.7));
     escena.add(eje, poste, remate);
 
-    // Tarima con borde de neón y suelo
-    const plataforma = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.85, 0.4, 72), tarima);
-    plataforma.position.y = -2.85;
+    // Tarima de dos escalones: neón en el borde del de arriba, bombillas en el de abajo
+    const escalonBajo = new THREE.Mesh(new THREE.CylinderGeometry(R_TARIMA_BAJA, R_TARIMA_BAJA + 0.15, TARIMA_BAJA - SUELO, 72), tarima);
+    escalonBajo.position.y = (TARIMA_BAJA + SUELO) / 2;
+    const escalonAlto = new THREE.Mesh(new THREE.CylinderGeometry(R_TARIMA_ALTA, R_TARIMA_ALTA + 0.1, TARIMA_ALTA - TARIMA_BAJA, 72), tarima);
+    escalonAlto.position.y = (TARIMA_ALTA + TARIMA_BAJA) / 2;
     const neon = new THREE.Mesh(
-        new THREE.TorusGeometry(3.6, 0.05, 8, 160),
+        new THREE.TorusGeometry(R_TARIMA_ALTA, 0.05, 8, 160),
         new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffc43d').multiplyScalar(1.6) }),
     );
     neon.rotation.x = Math.PI / 2;
-    neon.position.y = -2.65;
+    neon.position.y = TARIMA_ALTA;
     const suelo = new THREE.Mesh(
         new THREE.CircleGeometry(45, 64),
         new THREE.MeshStandardMaterial({ color: '#180c36', roughness: 0.8, envMapIntensity: 0.12 }),
     );
     suelo.rotation.x = -Math.PI / 2;
     suelo.position.y = SUELO;
-    escena.add(plataforma, neon, suelo);
+    escena.add(escalonBajo, escalonAlto, neon, suelo);
+
+    // Pedestal: columna sobre la tarima y una cuna dorada que recoge el bombo por debajo.
+    // La cuna queda fuera de la esfera de la jaula, así que no estorba al girar.
+    const Y_CUNA = -1.35;
+    const R_CUNA = Math.sqrt(RJ * RJ - Y_CUNA * Y_CUNA) + 0.12;
+    const Y_COLUMNA = -2.3;
+    const columna = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.62, Y_COLUMNA - TARIMA_ALTA, 28), laca);
+    columna.position.y = (Y_COLUMNA + TARIMA_ALTA) / 2;
+    const collarin = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.06, 10, 40), oro);
+    collarin.rotation.x = Math.PI / 2;
+    collarin.position.y = Y_COLUMNA;
+    const basePedestal = new THREE.Mesh(new THREE.TorusGeometry(0.64, 0.06, 10, 40), oro);
+    basePedestal.rotation.x = Math.PI / 2;
+    basePedestal.position.y = TARIMA_ALTA + 0.03;
+    const cuna = new THREE.Mesh(new THREE.TorusGeometry(R_CUNA, 0.06, 10, 120), oro);
+    cuna.rotation.x = Math.PI / 2;
+    cuna.position.y = Y_CUNA;
+    escena.add(columna, collarin, basePedestal, cuna);
+    const desde = V(), hasta = V();
+    for (let k = 0; k < 4; k++) {
+        const a = (k * Math.PI) / 2 + Math.PI / 4;
+        desde.set(Math.cos(a) * 0.5, Y_COLUMNA, Math.sin(a) * 0.5);
+        hasta.set(Math.cos(a) * R_CUNA, Y_CUNA, Math.sin(a) * R_CUNA);
+        const largo = desde.distanceTo(hasta);
+        const brazo = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, largo, 10), oro);
+        brazo.position.copy(desde).add(hasta).multiplyScalar(0.5);
+        brazo.quaternion.setFromUnitVectors(EJE_Y, hasta.clone().sub(desde).normalize());
+        escena.add(brazo);
+    }
 
     // Marquesina detrás del bombo: dos patas apoyadas en el suelo y un
     // semicírculo arriba, simétrica y centrada, con bombillas en todo el contorno.
@@ -185,7 +221,7 @@ export function crearEscenario(canvas, { columnaDe, colores, reducirMovimiento =
     const N_ARO = 44;
     for (let i = 0; i < N_ARO; i++) {
         const a = (i / N_ARO) * Math.PI * 2;
-        posicionesBombillas.push(new THREE.Vector3(Math.cos(a) * 4.3, SUELO + 0.12, Math.sin(a) * 4.3));
+        posicionesBombillas.push(new THREE.Vector3(Math.cos(a) * R_BOMBILLAS, TARIMA_BAJA + 0.07, Math.sin(a) * R_BOMBILLAS));
     }
     const bombillas = new THREE.InstancedMesh(
         new THREE.SphereGeometry(0.1, 12, 8),
