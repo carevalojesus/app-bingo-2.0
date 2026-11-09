@@ -3,6 +3,11 @@ import { gsap } from 'gsap';
 import { crearEscenario } from './escenario.js';
 import { anunciarBola, celebrarBingo, detenerCelebracion, estampar, confeti, sacudirUI } from './anuncio.js';
 import * as sfx from './efectos.js';
+import { generarCarton, verificar, parsearCodigo, PATRONES, normalizarSerie, serieValida } from './carton.js';
+import { htmlCarton } from './carton-html.js';
+import { extraerBola } from './azar.js';
+import { salaEnUrl, iniciarAnfitrion } from './en-linea/anfitrion.js';
+import { MODOS_VOZ, leerModoVoz, guardarModoVoz, infoModoVoz, textoBola, textoMomento } from './narrador.js';
 
 const LETRAS = [
     { letra: 'B', color: '#ff5a36' },
@@ -35,13 +40,15 @@ function guardarPreferencia(clave, valor) {
 
 // ---------- Estado ----------
 const estado = {
-    bolas: [],
+    bolas: [], // las que ya salieron, en orden
+    restantes: [], // las que siguen en el bombo
     indice: -1,
     salidas: new Set(),
     jugando: false,
     terminado: false,
     intervalo: VELOCIDADES.includes(leerPreferencia('intervalo', 8000)) ? leerPreferencia('intervalo', 8000) : 8000,
     sonido: leerPreferencia('sonido', true),
+    patron: PATRONES[leerPreferencia('patron', 'linea')] ? leerPreferencia('patron', 'linea') : 'linea',
     tiempoAcumulado: 0,
     inicioTramo: 0,
 };
@@ -49,14 +56,20 @@ let proximaBola = null;
 let relojTiempo = null;
 let ultimaCasilla = null;
 let escenario = null;
+let tlFicha = null;
+let finPendiente = null;
+// Sube en cada reinicio: los callbacks de una bola de la partida anterior se ignoran
+let partida = 0;
+// Bola que muestra ahora la ficha "Bola actual" (pasa al historial cuando llega otra)
+let bolaMostrada = null;
+// Modo en línea (index.html?sala=CODIGO): controlador de src/en-linea/anfitrion.js.
+// Si es null, el show funciona sin conexión como siempre.
+let enLinea = null;
+// Animación de entrada (telón, pizarra…): fijarBolas espera a que termine para girar las casillas
+let tlIntro = null;
 
-function mezclar(arreglo) {
-    for (let i = arreglo.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [arreglo[i], arreglo[j]] = [arreglo[j], arreglo[i]];
-    }
-    return arreglo;
-}
+// Bolas 1..75 en orden: se saca cada una en el momento, sin orden precalculado
+const todasLasBolas = () => Array.from({ length: TOTAL }, (_, i) => i + 1);
 const ritmo = () => gsap.utils.clamp(0.6, 1, estado.intervalo / 7000);
 
 // ---------- Pizarra ----------
@@ -124,9 +137,11 @@ function htmlFicha(n, grande = false) {
 function mostrarActual(n) {
     const { letra, color } = columnaDe(n);
     const ficha = $('fichaActual');
-    const anterior = estado.indice > 0 ? estado.bolas[estado.indice - 1] : null;
+    const anterior = bolaMostrada;
+    bolaMostrada = n;
 
-    gsap.timeline()
+    tlFicha?.kill();
+    tlFicha = gsap.timeline()
         .to(ficha, { rotationY: 90, duration: 0.15, ease: 'power2.in' })
         .call(() => {
             ficha.style.setProperty('--c', color);
@@ -182,32 +197,46 @@ function actualizarBotonPlay() {
 
 // ---------- Juego ----------
 function sacarBola() {
-    if (estado.indice >= TOTAL - 1) return finDelJuego();
-    estado.indice++;
-    const n = estado.bolas[estado.indice];
+    if (estado.restantes.length === 0) return finDelJuego();
+    const n = extraerBola(estado.restantes);
+    estado.bolas.push(n);
+    estado.indice = estado.bolas.length - 1;
+    animarBola(n);
+    if (estado.indice < TOTAL - 1) programarSiguiente();
+}
+
+// Secuencia visual de una bola: bombo, vuelo, anuncio, voz, pizarra e historial.
+// estado.indice ya apunta a ella.
+function animarBola(n) {
     const info = { ...columnaDe(n), numero: n };
     estado.salidas.add(n);
     const f = ritmo();
+    const id = partida;
+    const vigente = () => id === partida;
+    // Si se abre un modal (¡Bingo!, reiniciar) la bola se completa en silencio
+    const enEscena = () => vigente() && !modalAbierto;
 
     if (estado.sonido) sfx.redoble(1.5 * f);
     escenario.sortear(n, {
         ritmo: f,
-        onSalida: () => estado.sonido && sfx.silbido(0.8 * f),
-        onRevelar: () => estado.sonido && sfx.campana(),
+        onSalida: () => enEscena() && estado.sonido && sfx.silbido(0.8 * f),
+        onRevelar: () => enEscena() && estado.sonido && sfx.campana(),
         onImpacto: () => {
-            if (estado.sonido) {
-                sfx.golpe();
-                gsap.delayedCall(0.35, () => estado.sonido && sfx.cantar(`${info.letra}, ${n}`));
+            if (!vigente()) return;
+            if (enEscena()) {
+                if (estado.sonido) {
+                    sfx.golpe();
+                    gsap.delayedCall(0.35, () => enEscena() && estado.sonido && sfx.cantar(textoBola(info.letra, n)));
+                }
+                anunciarBola(info, { ritmo: f, reducirMovimiento });
             }
-            anunciarBola(info, { ritmo: f, reducirMovimiento });
             marcarCasilla(n);
             mostrarActual(n);
             actualizarCuentas();
-            if (estado.indice >= TOTAL - 1) gsap.delayedCall(1.6, finDelJuego);
+            // En línea el final lo decide el servidor (mensaje de estado «terminada»)
+            if (!enLinea && estado.indice >= TOTAL - 1) finPendiente = gsap.delayedCall(1.6, finDelJuego);
         },
     });
-
-    if (estado.indice < TOTAL - 1) programarSiguiente();
 }
 
 function programarSiguiente() {
@@ -237,9 +266,10 @@ function pausar() {
     actualizarBotonPlay();
 }
 
-const alternarJuego = () => (estado.jugando ? pausar() : iniciar());
+const alternarJuego = () => (enLinea ? enLinea.alternar() : estado.jugando ? pausar() : iniciar());
 
-function finDelJuego() {
+// contenido: HTML del sello (en línea, el resumen de premios)
+function finDelJuego(contenido) {
     if (estado.terminado) return;
     pausar();
     proximaBola?.kill();
@@ -250,18 +280,24 @@ function finDelJuego() {
     const fin = $('fin');
     fin.classList.replace('hidden', 'grid');
     estampar($('finSello'), { texto: '', fondo: '#ffc43d' }, reducirMovimiento);
-    $('finSello').innerHTML = '<p class="font-display text-3xl sm:text-5xl">¡Se acabaron!</p><p class="etiqueta mt-1">Salieron las 75 bolas</p>';
+    $('finSello').innerHTML = typeof contenido === 'string' ? contenido
+        : '<p class="font-display text-3xl sm:text-5xl">¡Se acabaron!</p><p class="etiqueta mt-1">Salieron las 75 bolas</p>';
     confeti(COLORES, { cantidad: reducirMovimiento ? 0 : 80 });
     if (estado.sonido) sfx.fanfarria();
 }
 
-function reiniciar() {
+function reiniciar({ aviso = '¡Las bolas vuelven al bombo!' } = {}) {
+    partida++;
     pausar();
     proximaBola?.kill();
     proximaBola = null;
+    finPendiente?.kill();
+    finPendiente = null;
+    tlFicha?.kill();
     sfx.callar();
     Object.assign(estado, {
-        bolas: mezclar(Array.from({ length: TOTAL }, (_, i) => i + 1)),
+        bolas: [],
+        restantes: todasLasBolas(),
         indice: -1,
         salidas: new Set(),
         terminado: false,
@@ -269,6 +305,7 @@ function reiniciar() {
     });
     ultimaCasilla?.classList.remove('ultima');
     ultimaCasilla = null;
+    bolaMostrada = null;
 
     // Las casillas vuelven a girar en ola
     gsap.to('#tablero .casilla-giro', { rotationX: 0, duration: 0.5, ease: 'power3.inOut', stagger: { each: 0.012, from: 'end' } });
@@ -288,12 +325,112 @@ function reiniciar() {
     actualizarCuentas();
     pintarTiempo();
     actualizarBotonPlay();
-    avisar('¡Las bolas vuelven al bombo!');
+    if (aviso) avisar(aviso);
+}
+
+// ---------- Ganchos del modo en línea (el servidor saca las bolas) ----------
+// Anima una bola recibida del servidor (mensaje «bola»)
+function bolaRecibida(n) {
+    if (estado.salidas.has(n) || estado.salidas.size >= TOTAL) return;
+    estado.indice = estado.salidas.size;
+    estado.bolas = [...estado.bolas.slice(0, estado.indice), n];
+    estado.restantes = estado.restantes.filter((x) => x !== n);
+    animarBola(n);
+}
+
+// Deja la pizarra, el contador, el historial y la bola actual tal como dice el
+// servidor, sin animar (al conectar o reconectar a mitad de partida).
+// Devuelve false si ya coincidían.
+function fijarBolas(lista) {
+    const actuales = estado.bolas.slice(0, estado.indice + 1);
+    if (actuales.length === lista.length && lista.every((n, i) => n === actuales[i])) return false;
+    partida++; // las animaciones a medias de bolas anteriores ya no tocan nada
+    finPendiente?.kill();
+    finPendiente = null;
+    tlFicha?.kill();
+    estado.bolas = [...lista];
+    estado.indice = lista.length - 1;
+    estado.salidas = new Set(lista);
+    estado.restantes = todasLasBolas().filter((n) => !estado.salidas.has(n));
+    escenario.retirar(lista); // las ya sorteadas salen del bombo sin animación
+
+    // Si la entrada aún gira las casillas, se pintan cuando termine (si no, la pisaría)
+    if (tlIntro && tlIntro.progress() < 1) tlIntro.eventCallback('onComplete', pintarCasillas);
+    else pintarCasillas();
+    ultimaCasilla?.classList.remove('ultima');
+    ultimaCasilla = null;
+
+    const ultima = lista[lista.length - 1] ?? null;
+    const ficha = $('fichaActual');
+    gsap.set(ficha, { rotationY: 0 });
+    bolaMostrada = ultima;
+    if (ultima) {
+        ultimaCasilla = $('num' + ultima);
+        ultimaCasilla.classList.add('ultima');
+        ficha.style.setProperty('--c', columnaDe(ultima).color);
+        ficha.innerHTML = htmlFicha(ultima, true);
+        $('textoActual').textContent = `${columnaDe(ultima).letra}-${ultima}`;
+    } else {
+        ficha.style.setProperty('--c', '#3b2a6e');
+        ficha.innerHTML = '<span class="ficha-centro">?</span>';
+        $('textoActual').textContent = '—';
+    }
+
+    const historial = $('historial');
+    gsap.killTweensOf(historial.children);
+    historial.innerHTML = '';
+    lista.slice(0, -1).slice(-MAX_HISTORIAL).reverse().forEach((n) => {
+        const item = document.createElement('li');
+        item.className = 'ficha h-10 w-10 sm:h-11 sm:w-11';
+        item.style.setProperty('--c', columnaDe(n).color);
+        item.innerHTML = htmlFicha(n);
+        item.setAttribute('aria-label', `${columnaDe(n).letra} ${n}`);
+        historial.appendChild(item);
+    });
+    actualizarCuentas();
+    return true;
+}
+
+function pintarCasillas() {
+    for (let n = 1; n <= TOTAL; n++) {
+        const casilla = $('num' + n);
+        gsap.killTweensOf([casilla, casilla.firstElementChild]);
+        gsap.set(casilla.firstElementChild, { rotationX: estado.salidas.has(n) ? 180 : 0, opacity: 1 });
+        gsap.set(casilla, { scale: 1, clearProps: 'zIndex' });
+    }
+}
+
+// El reloj corre mientras el servidor está sorteando
+function correrReloj(activo) {
+    if (activo === estado.jugando) return;
+    if (!activo) return pausar();
+    estado.jugando = true;
+    estado.inicioTramo = performance.now();
+    relojTiempo = setInterval(pintarTiempo, 250);
+    actualizarBotonPlay();
+}
+
+function fijarVelocidad(intervalo) {
+    if (!VELOCIDADES.includes(intervalo) || intervalo === estado.intervalo) return;
+    estado.intervalo = intervalo;
+    aplicarVelocidad();
+}
+
+// Abre el modal de ¡Bingo! (con el contenido que haya preparado el modo en línea) y lo celebra
+function celebrarGanador() {
+    if (modalAbierto) cerrarModal();
+    abrirModal($('modalBingo'));
+    celebrarBingo({ colores: COLORES, reducirMovimiento });
+    escenario.celebrar();
+    if (estado.sonido) {
+        sfx.fanfarria();
+        sfx.cantar(textoMomento('bingo'));
+    }
 }
 
 // Anillo de cuenta atrás alrededor del botón de jugar
 gsap.ticker.add(() => {
-    const p = proximaBola && !estado.terminado ? proximaBola.progress() : 0;
+    const p = enLinea ? enLinea.progresoAnillo() : proximaBola && !estado.terminado ? proximaBola.progress() : 0;
     $('anillo').setAttribute('stroke-dashoffset', String(100 - p * 100));
 });
 
@@ -311,7 +448,7 @@ function abrirModal(modal) {
             { scale: 0.4, rotation: -10, opacity: 0 },
             { scale: 1, rotation: 0, opacity: 1, duration: 0.55, ease: 'elastic.out(1, 0.6)' });
     }
-    modal.querySelector('textarea, button:not([data-cerrar])')?.focus({ preventScroll: true });
+    (modal.querySelector('[data-autofoco]') ?? modal.querySelector('button:not([data-cerrar])'))?.focus({ preventScroll: true });
 }
 
 function cerrarModal() {
@@ -334,7 +471,7 @@ document.querySelectorAll('[data-cerrar]').forEach((b) => b.addEventListener('cl
 
 document.addEventListener('keydown', (e) => {
     if (!modalAbierto || e.key !== 'Tab') return;
-    const enfocables = [...modalAbierto.querySelectorAll('button, textarea')].filter((x) => x.offsetParent);
+    const enfocables = [...modalAbierto.querySelectorAll('button, textarea, input, summary')].filter((x) => x.offsetParent);
     const primero = enfocables[0];
     const ultimo = enfocables[enfocables.length - 1];
     if (e.shiftKey && document.activeElement === primero) { e.preventDefault(); ultimo.focus(); }
@@ -343,6 +480,7 @@ document.addEventListener('keydown', (e) => {
 
 // ---------- ¡Bingo! ----------
 function bingo() {
+    if (enLinea) return; // en línea el servidor verifica cada ¡Bingo!
     if (estado.salidas.size === 0) {
         avisar('Aún no ha salido ninguna bola');
         gsap.fromTo('#bingoBtn', { rotation: -8 }, { rotation: 0, duration: 0.6, ease: 'elastic.out(1, 0.25)', clearProps: 'transform' });
@@ -350,35 +488,106 @@ function bingo() {
     }
     pausar();
     $('bingoBolas').textContent = estado.salidas.size;
+    $('bingoBolasPalabra').textContent = estado.salidas.size === 1 ? 'bola' : 'bolas';
     $('bingoTiempo').textContent = formatoTiempo(tiempoTranscurrido());
+    $('codigoCarton').value = '';
     $('numerosCarton').value = '';
+    $('aMano').open = false;
     $('resultado').classList.add('hidden');
     $('sello').classList.add('hidden');
+    ultimaVerificacion = null;
+    aplicarPatron();
+    pintarSerie();
     abrirModal($('modalBingo'));
     celebrarBingo({ colores: COLORES, reducirMovimiento });
     escenario.celebrar();
     if (estado.sonido) {
         sfx.fanfarria();
-        sfx.cantar('¡Bingo!');
+        sfx.cantar(textoMomento('bingo'));
     }
 }
 
-function verificarCarton() {
+// Repite la última verificación al cambiar de modalidad
+let ultimaVerificacion = null;
+
+function serieRecordada() {
+    const serie = normalizarSerie(leerPreferencia('serie', ''));
+    return serieValida(serie) ? serie : null;
+}
+function pintarSerie() {
+    $('serieActual').textContent = serieRecordada() ?? '—';
+}
+
+function aplicarPatron() {
+    document.querySelectorAll('#patrones [data-patron]').forEach((b) => {
+        b.setAttribute('aria-checked', String(b.dataset.patron === estado.patron));
+    });
+}
+
+function limpiarResultado() {
+    $('resultado').classList.remove('hidden');
+    $('resultadoCarton').innerHTML = '';
+    $('resultadoChips').innerHTML = '';
+}
+
+function mostrarAviso(texto) {
+    $('resultadoTexto').textContent = texto;
+    $('resultadoTexto').className = 'mb-3 text-center font-ui font-black text-tinta/60';
+    $('sello').classList.add('hidden');
+}
+
+// Mensaje, sello y sonido del veredicto
+function veredicto(valido, texto) {
+    const resultadoTexto = $('resultadoTexto');
+    resultadoTexto.textContent = texto;
+    resultadoTexto.className = `mb-3 text-center font-ui font-black ${valido ? 'text-tinta' : 'text-tomate'}`;
+    if (valido) {
+        estampar($('sello'), { texto: '¡Válido!', fondo: '#19c3a0' }, reducirMovimiento);
+        gsap.delayedCall(0.4, () => {
+            confeti(COLORES, { cantidad: reducirMovimiento ? 0 : 70 });
+            if (estado.sonido) sfx.golpe(0.8);
+        });
+    } else {
+        estampar($('sello'), { texto: 'No vale', fondo: '#ff5a36', color: '#fff3df' }, reducirMovimiento);
+        gsap.delayedCall(0.4, () => estado.sonido && sfx.golpe(0.6));
+    }
+}
+
+const listaNumeros = (numeros) => numeros.map((n) => columnaDe(n).letra + n).join(', ');
+const textoFaltan = (faltan) => `${faltan.length === 1 ? 'falta 1 número' : `faltan ${faltan.length} números`}: ${listaNumeros(faltan)}`;
+
+// Verificación por código: el cartón se reconstruye a partir de la serie
+function verificarCodigo() {
+    ultimaVerificacion = verificarCodigo;
+    limpiarResultado();
+    const codigo = parsearCodigo($('codigoCarton').value, serieRecordada());
+    if (codigo.error) return mostrarAviso(codigo.error);
+
+    guardarPreferencia('serie', codigo.serie);
+    pintarSerie();
+    const carton = generarCarton(codigo.serie, codigo.numero);
+    const r = verificar(carton, estado.salidas, estado.patron);
+    const { nombre } = PATRONES[estado.patron];
+
+    $('resultadoCarton').innerHTML = htmlCarton(carton, { marcadas: r.marcadas, clave: r.figura, faltan: r.faltan });
+    gsap.from('#resultadoCarton .carton-celda', {
+        scale: 0, duration: 0.35, ease: 'back.out(2.5)', stagger: { amount: 0.35, grid: [5, 5], from: 'center' },
+    });
+    const texto = r.gana
+        ? `Cartón ${carton.codigo}: ¡${nombre}!`
+        : `Cartón ${carton.codigo}: para ${nombre.toLowerCase()} le ${textoFaltan(r.faltan)}`;
+    veredicto(r.gana, texto);
+}
+
+// Verificación a mano: comprueba que los números escritos ya salieron
+function verificarNumeros() {
+    ultimaVerificacion = null;
+    limpiarResultado();
     const texto = $('numerosCarton').value;
     const numeros = [...new Set((texto.match(/\d+/g) || []).map(Number))].filter((n) => n >= 1 && n <= TOTAL);
-    const resultadoTexto = $('resultadoTexto');
+    if (numeros.length === 0) return mostrarAviso('Escribe números del 1 al 75.');
+
     const chips = $('resultadoChips');
-    $('resultado').classList.remove('hidden');
-    chips.innerHTML = '';
-
-    if (numeros.length === 0) {
-        resultadoTexto.textContent = 'Escribe números del 1 al 75.';
-        resultadoTexto.className = 'mb-3 text-center font-ui font-black text-tinta/60';
-        $('sello').classList.add('hidden');
-        return;
-    }
-
-    const faltan = numeros.filter((n) => !estado.salidas.has(n));
     numeros.forEach((n) => {
         const salio = estado.salidas.has(n);
         const chip = document.createElement('span');
@@ -390,19 +599,11 @@ function verificarCarton() {
     });
     gsap.from(chips.children, { scale: 0, rotation: -180, duration: 0.5, stagger: 0.05, ease: 'back.out(2.5)' });
 
-    if (faltan.length === 0) {
-        resultadoTexto.textContent = `Los ${numeros.length} números ya salieron.`;
-        resultadoTexto.className = 'mb-3 text-center font-ui font-black text-tinta';
-        estampar($('sello'), { texto: '¡Válido!', fondo: '#19c3a0' }, reducirMovimiento);
-        gsap.delayedCall(0.4, () => {
-            confeti(COLORES, { cantidad: reducirMovimiento ? 0 : 70 });
-            if (estado.sonido) sfx.golpe(0.8);
-        });
-    } else {
-        resultadoTexto.textContent = `${faltan.length === 1 ? 'Falta 1 número' : `Faltan ${faltan.length} números`}: ${faltan.map((n) => columnaDe(n).letra + n).join(', ')}`;
-        resultadoTexto.className = 'mb-3 text-center font-ui font-black text-tomate';
-        estampar($('sello'), { texto: 'No vale', fondo: '#ff5a36', color: '#fff3df' }, reducirMovimiento);
-        gsap.delayedCall(0.4, () => estado.sonido && sfx.golpe(0.6));
+    const faltan = numeros.filter((n) => !estado.salidas.has(n));
+    if (faltan.length === 0) veredicto(true, `Los ${numeros.length} números ya salieron.`);
+    else {
+        const t = textoFaltan(faltan);
+        veredicto(false, t[0].toUpperCase() + t.slice(1));
     }
 }
 
@@ -424,6 +625,7 @@ function alternarPizarra(abrir) {
 
 // ---------- Controles ----------
 function pedirReinicio() {
+    if (enLinea) return enLinea.pedirReinicio();
     if (estado.salidas.size === 0) return avisar('La partida aún no ha empezado');
     pausar();
     abrirModal($('modalReset'));
@@ -446,13 +648,25 @@ function aplicarVelocidad() {
 $('playBtn').addEventListener('click', alternarJuego);
 $('resetBtn').addEventListener('click', pedirReinicio);
 $('bingoBtn').addEventListener('click', bingo);
-$('verificarBtn').addEventListener('click', verificarCarton);
-$('numerosCarton').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); verificarCarton(); }
+$('verificarBtn').addEventListener('click', verificarCodigo);
+$('codigoCarton').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); verificarCodigo(); }
 });
-$('seguirBtn').addEventListener('click', () => { cerrarModal(); iniciar(); });
+$('verificarNumerosBtn').addEventListener('click', verificarNumeros);
+$('numerosCarton').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); verificarNumeros(); }
+});
+$('patrones').addEventListener('click', (e) => {
+    const boton = e.target.closest('[data-patron]');
+    if (!boton || boton.dataset.patron === estado.patron) return;
+    estado.patron = boton.dataset.patron;
+    guardarPreferencia('patron', estado.patron);
+    aplicarPatron();
+    if (ultimaVerificacion && $('codigoCarton').value.trim()) ultimaVerificacion();
+});
+$('seguirBtn').addEventListener('click', () => { cerrarModal(); if (!enLinea) iniciar(); });
 $('nuevaPartidaBtn').addEventListener('click', () => { cerrarModal(); reiniciar(); });
-$('confirmarResetBtn').addEventListener('click', () => { cerrarModal(); reiniciar(); });
+$('confirmarResetBtn').addEventListener('click', () => { cerrarModal(); enLinea ? enLinea.nuevaPartida() : reiniciar(); });
 $('pizarraBtn').addEventListener('click', () => alternarPizarra());
 $('cerrarPizarra').addEventListener('click', () => alternarPizarra(false));
 $('pizarraFondo').addEventListener('click', () => alternarPizarra(false));
@@ -465,9 +679,24 @@ $('sonidoBtn').addEventListener('click', () => {
     avisar(estado.sonido ? 'Sonido y voz activados' : 'Sonido apagado');
 });
 
+// Voz del narrador: normal, con frases, inglés o portugués
+$('vozBtn').addEventListener('click', () => {
+    const i = MODOS_VOZ.findIndex((m) => m.id === leerModoVoz());
+    const modo = MODOS_VOZ[(i + 1) % MODOS_VOZ.length];
+    guardarModoVoz(modo.id);
+    avisar(modo.nombre);
+    if (estado.sonido) sfx.cantar(textoBola('B', 15, modo.id));
+});
+$('vozBtn').title = `Voz del narrador: ${infoModoVoz(leerModoVoz()).nombre}`;
+
 $('velocidadBtn').addEventListener('click', () => {
     const i = VELOCIDADES.indexOf(estado.intervalo);
     estado.intervalo = VELOCIDADES[(i + 1) % VELOCIDADES.length];
+    if (enLinea) {
+        // Se muestra ya; la siguiente instantánea del servidor lo confirma
+        aplicarVelocidad();
+        return enLinea.velocidad(estado.intervalo);
+    }
     guardarPreferencia('intervalo', estado.intervalo);
     aplicarVelocidad();
     if (proximaBola) programarSiguiente();
@@ -485,6 +714,7 @@ document.addEventListener('keydown', (e) => {
         e.preventDefault();
         if (!estado.terminado) alternarJuego();
     } else if (e.key.toLowerCase() === 'b') {
+        e.preventDefault(); // si no, la "b" se escribe en el campo del código al abrir el modal
         bingo();
     } else if (e.key.toLowerCase() === 'r') {
         pedirReinicio();
@@ -498,15 +728,24 @@ async function arrancar() {
         await Promise.race([document.fonts.load('48px Bungee'), new Promise((ok) => setTimeout(ok, 2500))]);
     } catch { /* se usa la fuente de respaldo */ }
 
-    estado.bolas = mezclar(Array.from({ length: TOTAL }, (_, i) => i + 1));
+    estado.restantes = todasLasBolas();
     construirPizarra();
     aplicarSonido();
     aplicarVelocidad();
     actualizarBotonPlay();
-    escenario = crearEscenario($('escena'), { columnaDe, colores: COLORES, reducirMovimiento });
+    let con3D = true;
+    try {
+        escenario = crearEscenario($('escena'), { columnaDe, colores: COLORES, reducirMovimiento });
+    } catch (error) {
+        console.warn('No se pudo iniciar la escena 3D:', error);
+        escenario = escenarioSin3D();
+        $('escena').classList.add('hidden');
+        con3D = false;
+    }
 
     const escritorio = window.innerWidth >= 1024;
     const tl = gsap.timeline();
+    tlIntro = tl;
     tl.to('.telon-izq', { xPercent: -102, duration: 1.3, ease: 'power3.inOut' }, 0.25)
         .to('.telon-der', { xPercent: 102, duration: 1.3, ease: 'power3.inOut' }, 0.25)
         .set('#telon', { display: 'none' })
@@ -523,6 +762,55 @@ async function arrancar() {
         tl.from('#pizarra', { x: 480, rotation: 6, duration: 1, ease: 'power4.out', clearProps: 'transform' }, 1.1)
             .from('#tablero .casilla-giro', { rotationX: -100, opacity: 0, duration: 0.5, ease: 'back.out(2)', stagger: { amount: 1, from: 'start' } }, 1.5);
     }
+    if (!con3D) tl.call(() => avisar('Modo sin 3D: el sorteo funciona igual'), null, 2.4);
+
+    // Modo en línea: solo con ?sala=CODIGO (sin él no se hace ninguna petición)
+    const codigoSala = salaEnUrl();
+    if (codigoSala) {
+        enLinea = iniciarAnfitrion(codigoSala, {
+            bola: bolaRecibida,
+            fijarBolas,
+            reiniciar,
+            finalizar: finDelJuego,
+            correrReloj,
+            fijarVelocidad,
+            celebrarGanador,
+            avisar,
+            abrirModal: (id) => abrirModal($(id)),
+            cerrarModal,
+            hayModal: () => Boolean(modalAbierto),
+            cantadas: () => estado.salidas.size,
+            sonido: () => estado.sonido,
+            sacudir: () => escenario.sacudir?.(),
+            voz: textoMomento,
+            columnaDe,
+            colores: COLORES,
+            reducirMovimiento,
+        });
+    }
+}
+
+// Sustituto de la escena cuando el navegador no tiene WebGL: misma interfaz,
+// sin bombo, pero los callbacks del sorteo se siguen llamando.
+function escenarioSin3D() {
+    const vacio = () => gsap.timeline();
+    let tlSorteo = null;
+    return {
+        intro: vacio,
+        celebrar() { tlSorteo?.progress(1); return vacio(); },
+        reiniciar() { tlSorteo?.progress(1); },
+        terminar() {},
+        sacudir() {},
+        retirar() {},
+        sortear(_numero, { onSalida, onRevelar, onImpacto } = {}) {
+            tlSorteo?.progress(1);
+            tlSorteo = gsap.timeline()
+                .call(() => onSalida?.(), null, 0)
+                .call(() => onRevelar?.(), null, 0.4)
+                .call(() => onImpacto?.(), null, 0.6);
+            return tlSorteo;
+        },
+    };
 }
 
 arrancar();

@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Crear sala · Bingo Show</title>
+    <meta name="theme-color" content="#1a0d36">
+    <link rel="stylesheet" href="dist/styles.css">
+</head>
+<body class="min-h-screen bg-escenario font-ui text-tinta antialiased">
+
+<header class="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 pt-6 sm:px-6">
+    <div class="flex items-center gap-3">
+        <div class="flex gap-1" aria-hidden="true">
+            <span class="logo-ficha bg-tomate" style="transform:rotate(-6deg)">B</span>
+            <span class="logo-ficha bg-girasol" style="transform:rotate(4deg)">I</span>
+            <span class="logo-ficha bg-menta" style="transform:rotate(-3deg)">N</span>
+            <span class="logo-ficha bg-cobalto text-crema" style="transform:rotate(6deg)">G</span>
+            <span class="logo-ficha bg-fucsia" style="transform:rotate(-5deg)">O</span>
+        </div>
+        <h1 class="font-display text-xl text-crema sm:text-3xl">En línea</h1>
+    </div>
+    <a href="index.html" class="boton h-11 bg-crema px-4 text-sm">← Sin conexión</a>
+</header>
+
+<main class="mx-auto grid max-w-5xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[1fr_320px] lg:items-start">
+
+    <p id="avisoArchivo" class="carta hidden bg-girasol p-4 font-bold lg:col-span-2" role="alert">
+        Has abierto la página como archivo (doble clic). Para jugar en línea hace falta el servidor:
+        ábrela desde la dirección del Bingo Show. El show <a href="index.html" class="underline">sin conexión</a> funciona igual.
+    </p>
+
+    <form id="formSala" class="carta p-4 sm:p-6" novalidate autocomplete="off">
+        <h2 class="font-display text-2xl leading-none sm:text-3xl">Crear una sala</h2>
+        <p class="mt-2 text-sm font-bold text-tinta/70">
+            Tú proyectas el show; cada jugador se une desde su móvil con el código. Se juega con fichas virtuales, sin dinero.
+        </p>
+
+        <fieldset class="mt-5">
+            <legend class="etiqueta">Tipo de juego</legend>
+            <div class="mt-1.5 rounded-2xl border-[3px] border-tinta bg-crema p-1.5 shadow-duro-sm">
+                <div role="radiogroup" aria-label="Tipo de juego" class="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
+                    <button type="button" role="radio" aria-checked="true" data-tipo="carton"
+                            class="opcion flex h-auto min-h-[3.75rem] flex-col items-center justify-center gap-0.5 px-2 py-2 text-center normal-case">
+                        <span class="text-[13px] uppercase tracking-wide">Bingo clásico</span>
+                        <span class="text-[11px] font-bold normal-case tracking-normal opacity-80">cartones de 5×5, hasta 3 premios</span>
+                    </button>
+                    <button type="button" role="radio" aria-checked="false" data-tipo="fila"
+                            class="opcion flex h-auto min-h-[3.75rem] flex-col items-center justify-center gap-0.5 px-2 py-2 text-center normal-case">
+                        <span class="text-[13px] uppercase tracking-wide">Fila de 5</span>
+                        <span class="text-[11px] font-bold normal-case tracking-normal opacity-80">15 filas de 5 números, un ganador</span>
+                    </button>
+                    <button type="button" role="radio" aria-checked="false" data-tipo="elige"
+                            class="opcion flex h-auto min-h-[3.75rem] flex-col items-center justify-center gap-0.5 px-2 py-2 text-center normal-case">
+                        <span class="text-[13px] uppercase tracking-wide">Elige tus 5</span>
+                        <span class="text-[11px] font-bold normal-case tracking-normal opacity-80">cada uno elige sus números</span>
+                    </button>
+                </div>
+            </div>
+            <p id="ayudaTipo" class="mt-2 hidden text-xs font-bold text-tinta/70"></p>
+        </fieldset>
+
+        <div class="mt-5 grid gap-4 sm:grid-cols-2">
+            <div class="sm:col-span-2">
+                <label for="nombre" class="etiqueta block">Nombre de la sala <span class="text-tinta/50">(opcional)</span></label>
+                <input id="nombre" maxlength="40" placeholder="Bingo de los viernes" class="campo mt-1.5 w-full">
+            </div>
+            <div id="campoCartones">
+                <label for="cartones" class="etiqueta block"><span data-etiqueta-total>Cartones a la venta</span></label>
+                <input id="cartones" type="number" inputmode="numeric" min="10" max="300" value="60" class="campo mt-1.5 w-full">
+                <p class="mt-1 text-xs font-bold text-tinta/50">De 10 a 300, numerados desde el 1</p>
+            </div>
+            <div>
+                <label for="precioCarton" class="etiqueta block">Precio por <span data-unidad>cartón</span></label>
+                <input id="precioCarton" type="number" inputmode="numeric" min="0" max="1000" value="10" class="campo mt-1.5 w-full">
+                <p class="mt-1 text-xs font-bold text-tinta/50">En fichas (0 a 1000)</p>
+            </div>
+            <div>
+                <label for="maxCartonesPorJugador" class="etiqueta block">Máx. <span data-unidades>cartones</span> por jugador</label>
+                <input id="maxCartonesPorJugador" type="number" inputmode="numeric" min="1" max="12" value="4" class="campo mt-1.5 w-full">
+            </div>
+            <div>
+                <label for="fichasIniciales" class="etiqueta block">Fichas al unirse</label>
+                <input id="fichasIniciales" type="number" inputmode="numeric" min="0" max="100000" value="100" class="campo mt-1.5 w-full">
+            </div>
+            <div>
+                <label for="intervalo" class="etiqueta block">Velocidad del sorteo</label>
+                <select id="intervalo" class="campo mt-1.5 w-full">
+                    <option value="4000">Una bola cada 4 s</option>
+                    <option value="6000">Una bola cada 6 s</option>
+                    <option value="8000" selected>Una bola cada 8 s</option>
+                    <option value="12000">Una bola cada 12 s</option>
+                </select>
+            </div>
+            <div>
+                <label for="pozoExtra" class="etiqueta block">Pozo extra</label>
+                <input id="pozoExtra" type="number" inputmode="numeric" min="0" max="100000" value="0" class="campo mt-1.5 w-full">
+                <p class="mt-1 text-xs font-bold text-tinta/50">Fichas que pones tú además de las ventas</p>
+            </div>
+        </div>
+
+        <fieldset id="campoPremios" class="mt-6">
+            <div class="flex items-end justify-between gap-3">
+                <legend class="etiqueta">Premios <span class="text-tinta/50">(se juegan en orden)</span></legend>
+                <p id="sumaPremios" class="etiqueta" aria-live="polite"></p>
+            </div>
+            <ol id="premios" class="mt-2 grid gap-2"></ol>
+            <button type="button" id="agregarPremio" class="boton mt-3 h-10 bg-crema px-4 text-xs">+ Añadir premio</button>
+        </fieldset>
+
+        <fieldset class="mt-6">
+            <legend class="etiqueta">Extras para el show</legend>
+            <div class="mt-2 grid gap-2">
+                <label class="flex cursor-pointer items-start gap-3 rounded-xl border-[2.5px] border-tinta bg-white px-3 py-2.5">
+                    <input id="rondasSeguidas" type="checkbox" class="mt-1 h-5 w-5 shrink-0 accent-[#19c3a0]">
+                    <span><span class="block font-black">Rondas seguidas</span>
+                        <span class="block text-xs font-bold text-tinta/70">Al terminar, la siguiente ronda se abre sola y empieza tras una cuenta atrás de 30 s. Cada jugador puede repetir sus jugadas con un toque.</span></span>
+                </label>
+                <label class="flex cursor-pointer items-start gap-3 rounded-xl border-[2.5px] border-tinta bg-white px-3 py-2.5">
+                    <input id="bolaDorada" type="checkbox" class="mt-1 h-5 w-5 shrink-0 accent-[#ffc43d]">
+                    <span><span class="block font-black">Bola dorada</span>
+                        <span class="block text-xs font-bold text-tinta/70">Una bola secreta: si sale antes de que haya ganador, el premio en juego se duplica. Se revela al salir y se puede verificar.</span></span>
+                </label>
+                <div class="rounded-xl border-[2.5px] border-tinta bg-white px-3 py-2.5">
+                    <p class="font-black">Bote acumulado</p>
+                    <p class="text-xs font-bold text-tinta/70">Un porcentaje de cada ronda se guarda en el bote. Se lo lleva quien gane el último premio en pocas bolas; si no, sigue creciendo.</p>
+                    <div class="mt-2 grid grid-cols-2 gap-3">
+                        <div>
+                            <label for="botePorcentaje" class="etiqueta block">% de las ventas</label>
+                            <input id="botePorcentaje" type="number" inputmode="numeric" min="0" max="50" value="0" class="campo mt-1.5 w-full">
+                            <p class="mt-1 text-xs font-bold text-tinta/50">0 = sin bote (máx. 50)</p>
+                        </div>
+                        <div>
+                            <label for="boteBolas" class="etiqueta block">Ganar en… bolas</label>
+                            <input id="boteBolas" type="number" inputmode="numeric" min="5" max="75" value="35" class="campo mt-1.5 w-full">
+                            <p class="mt-1 text-xs font-bold text-tinta/50">o menos (5 a 75)</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </fieldset>
+
+        <div id="errores" class="mt-5 hidden rounded-xl border-[3px] border-tomate bg-white p-3 font-bold text-tomate" role="alert"></div>
+
+        <button type="submit" id="crearBtn" class="boton mt-6 h-14 w-full bg-girasol font-display text-xl normal-case sm:text-2xl">Crear sala</button>
+    </form>
+
+    <aside class="grid gap-6">
+        <form id="formAbrir" class="carta p-4 sm:p-5" novalidate autocomplete="off">
+            <h2 class="font-display text-xl leading-none">Abrir una sala mía</h2>
+            <p class="mt-2 text-sm font-bold text-tinta/70">Vuelve al show de una sala que creaste en este dispositivo.</p>
+            <label for="codigoAbrir" class="etiqueta mt-4 block">Código</label>
+            <div class="mt-1.5 flex gap-2">
+                <input id="codigoAbrir" maxlength="6" spellcheck="false" placeholder="K7Q2XM" class="campo min-w-0 flex-1 font-display uppercase tracking-widest">
+                <button type="submit" class="boton h-12 shrink-0 bg-menta px-4">Abrir</button>
+            </div>
+            <p id="errorAbrir" class="mt-2 hidden text-sm font-black text-tomate" role="alert"></p>
+            <ul id="salasGuardadas" class="mt-4 hidden flex-wrap gap-2" aria-label="Salas creadas en este dispositivo"></ul>
+        </form>
+
+        <section class="carta p-4 sm:p-5">
+            <h2 class="font-display text-xl leading-none">¿Vienes a jugar?</h2>
+            <p class="mt-2 text-sm font-bold text-tinta/70">Abre el enlace que aparece en la pantalla del show o escribe el código en tu móvil.</p>
+            <a href="jugar.html" class="boton mt-4 h-11 w-full bg-crema text-sm">Unirme a una sala</a>
+        </section>
+    </aside>
+</main>
+
+<script src="dist/sala.js"></script>
+</body>
+</html>

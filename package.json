@@ -4,17 +4,24 @@
   "private": true,
   "description": "Bingo 3D con Three.js, GSAP y Tailwind",
   "scripts": {
-    "build:js": "esbuild src/main.js --bundle --minify --format=iife --target=es2020 --outfile=dist/app.js",
+    "build:js": "esbuild app=src/main.js cartones=src/cartones.js jugador=src/jugador.js sala=src/sala.js --bundle --format=iife --target=es2020 --outdir=dist --minify",
     "build:css": "tailwindcss -i src/styles.css -o dist/styles.css --minify",
     "build": "npm run build:js && npm run build:css",
-    "dev": "npm run build:css -- --watch & esbuild src/main.js --bundle --format=iife --outfile=dist/app.js --watch"
+    "dev": "npm run build:css -- --watch=always & esbuild app=src/main.js cartones=src/cartones.js jugador=src/jugador.js sala=src/sala.js --bundle --format=iife --target=es2020 --outdir=dist --watch=forever",
+    "test": "node --test test/*.test.mjs",
+    "test:e2e": "node test/e2e-sala.mjs",
+    "dev:worker": "wrangler dev",
+    "deploy": "npm run build && wrangler deploy"
   },
   "devDependencies": {
     "@fontsource/archivo": "^5.1.0",
     "@fontsource/bungee": "^5.1.0",
     "esbuild": "^0.24.0",
     "gsap": "^3.12.5",
+    "qrcode-generator": "^1.4.4",
     "tailwindcss": "^3.4.16",
-    "three": "^0.160.0"
-  }
+    "three": "^0.160.0",
+    "wrangler": "^4.158.0"
+  },
+  "type": "module"
 }

@@ -2,14 +2,65 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Cartón de Bingo</title>
-    <link rel="stylesheet" href="css/bingo.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cartones · Bingo Show</title>
+    <meta name="theme-color" content="#1a0d36">
+    <link rel="stylesheet" href="dist/styles.css">
 </head>
-<body>
-<div class="app-wrap">
-    <div class="title">
-        <h1 class="title-app">BINGO</h1>
+<body class="min-h-screen bg-escenario font-ui text-tinta antialiased">
+
+<header class="no-imprimir mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 pt-6 sm:px-6">
+    <div class="flex items-center gap-3">
+        <div class="flex gap-1" aria-hidden="true">
+            <span class="logo-ficha bg-tomate" style="transform:rotate(-6deg)">B</span>
+            <span class="logo-ficha bg-girasol" style="transform:rotate(4deg)">I</span>
+            <span class="logo-ficha bg-menta" style="transform:rotate(-3deg)">N</span>
+            <span class="logo-ficha bg-cobalto text-crema" style="transform:rotate(6deg)">G</span>
+            <span class="logo-ficha bg-fucsia" style="transform:rotate(-5deg)">O</span>
+        </div>
+        <h1 class="font-display text-xl text-crema sm:text-3xl">Cartones</h1>
     </div>
-</div>
+    <a href="index.html" class="boton h-11 bg-crema px-4 text-sm">← Al show</a>
+</header>
+
+<form id="opciones" class="no-imprimir carta mx-auto mt-6 max-w-5xl p-4 sm:p-6" style="width:calc(100% - 2rem)" autocomplete="off">
+    <div class="grid gap-4 sm:grid-cols-[1.3fr_1fr_1fr_1fr] sm:items-end">
+        <div>
+            <label for="serie" class="etiqueta block">Serie</label>
+            <div class="mt-1.5 flex gap-2">
+                <input id="serie" maxlength="4" spellcheck="false" class="campo w-full font-display text-xl uppercase tracking-widest" aria-describedby="ayudaSerie">
+                <button type="button" id="nuevaSerieBtn" class="boton h-12 shrink-0 bg-menta px-3 text-xs">Nueva</button>
+            </div>
+        </div>
+        <div>
+            <label for="desde" class="etiqueta block">Desde el nº</label>
+            <input id="desde" type="number" min="1" max="999" value="1" class="campo mt-1.5 w-full">
+        </div>
+        <div>
+            <label for="hasta" class="etiqueta block">Hasta el nº</label>
+            <input id="hasta" type="number" min="1" max="999" value="12" class="campo mt-1.5 w-full">
+        </div>
+        <div>
+            <label for="porHoja" class="etiqueta block">Por hoja</label>
+            <select id="porHoja" class="campo mt-1.5 w-full">
+                <option value="1">1 cartón</option>
+                <option value="2">2 cartones</option>
+                <option value="4" selected>4 cartones</option>
+            </select>
+        </div>
+    </div>
+    <div class="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p id="ayudaSerie" class="text-sm font-bold text-tinta/70">
+            Con la serie el show reconstruye cualquier cartón: en «¡Bingo!» basta con escribir su número.
+            <span id="resumen" class="block text-tinta" aria-live="polite"></span>
+        </p>
+        <button type="submit" class="boton h-12 shrink-0 bg-girasol px-6">Imprimir</button>
+    </div>
+    <p id="error" class="mt-3 hidden font-black text-tomate" role="alert"></p>
+</form>
+
+<main id="hojas" class="hojas overflow-x-auto px-4 py-8" aria-label="Vista previa"></main>
+
+<script src="dist/cartones.js"></script>
 </body>
 </html>
