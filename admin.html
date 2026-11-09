@@ -102,6 +102,19 @@
                 <p id="sinCodigos" class="mt-3 hidden rounded-xl border-[2.5px] border-dashed border-tinta/30 p-4 text-center text-sm font-bold text-tinta/60">No hay códigos que mostrar.</p>
             </section>
         </div>
+
+        <section class="carta mt-5 p-5" aria-labelledby="tituloSalas">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <h2 id="tituloSalas" class="font-display text-2xl">Salas activas <span id="cuentaSalas" class="font-ui text-base font-black text-tinta/60"></span></h2>
+                <div class="flex gap-2">
+                    <button type="button" id="recargarSalas" class="boton h-10 bg-crema px-3 text-xs">Actualizar</button>
+                    <button type="button" id="cerrarTodas" class="boton h-10 bg-crema px-3 text-xs">Cerrar todas</button>
+                </div>
+            </div>
+            <p class="mt-1 text-xs font-bold text-tinta/60">Cerrar una sala avisa a quien esté conectado, lo desconecta y la borra entera. No se puede deshacer.</p>
+            <ul id="listaSalas" class="mt-3 grid gap-2"></ul>
+            <p id="sinSalas" class="mt-3 hidden rounded-xl border-[2.5px] border-dashed border-tinta/30 p-4 text-center text-sm font-bold text-tinta/60">No hay salas activas.</p>
+        </section>
     </div>
 </main>
 

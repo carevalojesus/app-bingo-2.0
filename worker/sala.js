@@ -107,6 +107,13 @@ export class Sala extends DurableObject {
 
         if (url.pathname === '/info') return json(juego.resumen(this.sala));
 
+        // Cierre por el administrador (solo llega desde el Worker: no hay ruta pública hasta aquí)
+        if (url.pathname === '/cerrar' && request.method === 'POST') {
+            const codigo = this.sala.codigo;
+            await this.borrar('El administrador cerró esta sala.', 4005);
+            return json({ cerrada: codigo });
+        }
+
         // Vincular otro dispositivo como anfitrión con el código de 6 cifras que muestra el show
         if (url.pathname === '/vincular' && request.method === 'POST') {
             const { codigo } = await request.json().catch(() => ({}));
@@ -336,13 +343,27 @@ export class Sala extends DurableObject {
             await this.guardar();
             return true;
         }
+        await this.borrar(null, 4004);
+        return true;
+    }
+
+    // Borra la sala entera: avisa (si hay texto), cierra las conexiones y la quita del registro
+    async borrar(aviso, codigoCierre) {
+        const codigo = this.sala?.codigo;
         for (const ws of this.ctx.getWebSockets()) {
-            try { ws.close(4004, 'Sala caducada'); } catch { /* ya cerrado */ }
+            if (aviso) enviar(ws, { tipo: 'aviso', texto: aviso });
+            try { ws.close(codigoCierre, aviso ? 'Sala cerrada' : 'Sala caducada'); } catch { /* ya cerrado */ }
         }
         this.sala = null;
         await this.ctx.storage.deleteAlarm();
         await this.ctx.storage.deleteAll();
-        return true;
+        if (codigo && this.env.REGISTRO) {
+            try {
+                await this.env.REGISTRO.get(this.env.REGISTRO.idFromName('registro')).quitarSala(codigo);
+            } catch (error) {
+                console.error('No se pudo quitar la sala del registro', error);
+            }
+        }
     }
 
     // ---------- Utilidades ----------

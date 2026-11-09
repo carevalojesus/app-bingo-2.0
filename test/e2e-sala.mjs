@@ -671,7 +671,21 @@ async function administracion() {
     const bloqueo = `fuerza-${IP_PRUEBA}`;
     for (let i = 0; i < 10; i++) assert.equal((await pedir('/api/admin/resumen', { headers: { 'x-prueba-ip': bloqueo, authorization: 'Bearer x' } })).status, 401);
     assert.equal((await pedir('/api/admin/resumen', { headers: { 'x-prueba-ip': bloqueo, authorization: `Bearer ${CLAVE_ADMIN}` } })).status, 429);
-    paso('administración: clave, emitir y registrar códigos, uso por sala, anular/reactivar y bloqueo por intentos');
+    // Salas activas: aparecen en el panel y se cierran (avisando y desconectando a quien esté dentro)
+    const abierta = await nuevaSalaE2E({ nombre: 'Para cerrar' }, `cierre-${IP_PRUEBA}`);
+    const dentro = new Cliente('anfitrión de la sala a cerrar', abierta.codigo);
+    await dentro.abrir({ rol: 'anfitrion', token: abierta.tokenAnfitrion });
+    await dentro.esperar('bienvenida');
+    const activas = (await llamar('/api/admin/salas')).datos.salas;
+    assert.ok(activas.some((x) => x.codigo === abierta.codigo && x.nombre === 'Para cerrar' && x.estado === 'lobby'));
+    const cierre = await llamar('/api/admin/salas/cerrar', { method: 'POST', body: JSON.stringify({ codigos: [abierta.codigo] }) });
+    assert.equal(cierre.datos.cerradas, 1);
+    await dentro.esperar((m) => m.tipo === 'aviso' && /cerró esta sala/.test(m.texto), 'aviso de cierre');
+    await dentro.esperarCierre();
+    assert.equal((await pedir(`/api/salas/${abierta.codigo}`)).status, 404, 'la sala cerrada ya no existe');
+    assert.ok(!(await llamar('/api/admin/salas')).datos.salas.some((x) => x.codigo === abierta.codigo));
+    dentro.cerrar();
+    paso('administración: clave, emitir y registrar códigos, uso por sala, anular/reactivar, bloqueo por intentos y cerrar salas');
 }
 
 async function admisionYVinculo() {

@@ -72,7 +72,7 @@ async function crear(request, env) {
         });
         if (respuesta.status === 201) {
             await limitador.apuntar();
-            await registro(env).anotarSala({ sala: codigo, pro });
+            await registro(env).anotarSala({ sala: codigo, pro, nombre: String(config?.nombre ?? '').slice(0, 40) });
         }
         if (respuesta.status !== 409) return respuesta;
     }
@@ -120,6 +120,40 @@ async function admin(request, env, url) {
             nota: texto(datos.nota, 80), cliente: texto(datos.cliente, 20).replace(/[^\d+]/g, ''), importe: plan.importe,
         });
         return json(emitido, 201);
+    }
+
+    // Salas que existen ahora, con su estado y jugadores (lo pregunta a cada sala)
+    if (url.pathname === '/api/admin/salas' && request.method === 'GET') {
+        const lista = await reg.salas();
+        const detalles = await Promise.all(lista.map(async (s) => {
+            const r = await sala(env, s.codigo).fetch('https://sala/info').catch(() => null);
+            if (!r || r.status === 404) {
+                await reg.quitarSala(s.codigo); // ya no existe (caducó antes de que existiera este registro)
+                return null;
+            }
+            const info = await r.json();
+            return { ...s, estado: info.estado, jugadores: info.jugadores };
+        }));
+        return json({ salas: detalles.filter(Boolean) });
+    }
+
+    // Cerrar salas: { codigos: [...] }, { todas: true } o { ids: [...] } (ids de Durable Object, para salas
+    // anteriores a este registro). Cerrar = avisar, desconectar y borrar la sala entera.
+    if (url.pathname === '/api/admin/salas/cerrar' && request.method === 'POST') {
+        const datos = await request.json().catch(() => ({}));
+        const codigos = datos.todas ? (await reg.salas()).map((s) => s.codigo)
+            : Array.isArray(datos.codigos) ? datos.codigos.filter(codigoValido) : [];
+        const destinos = [
+            ...codigos.map((c) => ({ etiqueta: c, stub: sala(env, c) })),
+            ...(Array.isArray(datos.ids) ? datos.ids : []).filter((id) => /^[0-9a-f]{64}$/.test(id))
+                .map((id) => ({ etiqueta: id.slice(0, 8), stub: env.SALAS.get(env.SALAS.idFromString(id)) })),
+        ].slice(0, 500);
+        const resultados = await Promise.all(destinos.map(async ({ etiqueta, stub }) => {
+            const r = await stub.fetch('https://sala/cerrar', { method: 'POST' }).catch(() => null);
+            if (r?.status === 404) await reg.quitarSala(etiqueta);
+            return { sala: etiqueta, cerrada: r?.ok ?? false };
+        }));
+        return json({ cerradas: resultados.filter((r) => r.cerrada).length, resultados });
     }
 
     if (url.pathname === '/api/admin/codigos/anular' && request.method === 'POST') {

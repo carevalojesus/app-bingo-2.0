@@ -96,6 +96,54 @@ async function cargar() {
     }
 }
 
+// ---------- Salas activas ----------
+const ESTADOS_SALA = { lobby: 'Sala de espera', jugando: 'Jugando', pausa: 'En pausa', terminada: 'Terminada' };
+
+async function cargarSalas() {
+    try {
+        const { salas } = await api('/api/admin/salas');
+        $('cuentaSalas').textContent = `(${salas.length})`;
+        $('sinSalas').classList.toggle('hidden', salas.length > 0);
+        $('cerrarTodas').disabled = salas.length === 0;
+        $('listaSalas').innerHTML = salas.map((s) => `
+            <li class="flex flex-wrap items-center gap-3 rounded-xl border-[2.5px] border-tinta bg-white px-3 py-2">
+                <span class="font-display tracking-widest">${esc(s.codigo)}</span>
+                <span class="min-w-0 flex-1 text-sm font-bold">${esc(s.nombre || 'Sin nombre')}
+                    <span class="block text-xs text-tinta/60">${ESTADOS_SALA[s.estado] ?? s.estado} · ${s.jugadores} ${s.jugadores === 1 ? 'jugador' : 'jugadores'} · ${s.pro ? 'Pro' : 'gratis'} · creada ${fecha(s.creada)}</span></span>
+                <button type="button" data-cerrar="${esc(s.codigo)}" class="boton h-9 bg-crema px-3 text-[11px]">Cerrar</button>
+            </li>`).join('');
+    } catch (error) {
+        avisar(error.message);
+    }
+}
+
+async function cerrarSalas(cuerpo, boton) {
+    if (boton.dataset.confirmar !== '1') {
+        boton.dataset.confirmar = '1';
+        boton.dataset.texto = boton.textContent;
+        boton.textContent = '¿Seguro?';
+        boton.classList.replace('bg-crema', 'bg-tomate');
+        return;
+    }
+    try {
+        const { cerradas } = await api('/api/admin/salas/cerrar', { method: 'POST', body: JSON.stringify(cuerpo) });
+        avisar(cerradas === 1 ? 'Sala cerrada' : `${cerradas} salas cerradas`);
+    } catch (error) {
+        avisar(error.message);
+    }
+    boton.dataset.confirmar = '';
+    boton.textContent = boton.dataset.texto;
+    boton.classList.replace('bg-tomate', 'bg-crema');
+    await cargarSalas();
+}
+
+$('recargarSalas').addEventListener('click', cargarSalas);
+$('cerrarTodas').addEventListener('click', (e) => cerrarSalas({ todas: true }, e.currentTarget));
+$('listaSalas').addEventListener('click', (e) => {
+    const boton = e.target.closest('[data-cerrar]');
+    if (boton) cerrarSalas({ codigos: [boton.dataset.cerrar] }, boton);
+});
+
 // ---------- Entrar / salir ----------
 async function entrar(valor) {
     clave = valor;
@@ -113,6 +161,7 @@ async function entrar(valor) {
     $('salirBtn').classList.remove('hidden');
     pintarResumen();
     pintarTabla();
+    cargarSalas();
 }
 
 function salir() {

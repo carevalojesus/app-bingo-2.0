@@ -3,6 +3,7 @@
 //
 // Claves:  c:<código normalizado> → { codigo, tipo, hasta, emitido, nota, cliente, importe, origen, revocado, salas: [] }
 //          d:<AAAA-MM-DD>         → { gratis, pro }  (salas creadas ese día, UTC)
+//          s:<código de sala>     → { codigo, nombre, pro, creada }  (salas que existen; se quitan al cerrarse o caducar)
 
 import { DurableObject } from 'cloudflare:workers';
 
@@ -34,8 +35,9 @@ export class Registro extends DurableObject {
 
     // Una sala creada: cuenta para las estadísticas y, si es Pro, se apunta en su código.
     // Un código generado fuera del panel (npm run codigo) se registra la primera vez que se usa.
-    async anotarSala({ sala, pro = null }) {
+    async anotarSala({ sala, pro = null, nombre = '' }) {
         const ahora = Date.now();
+        await this.ctx.storage.put(`s:${sala}`, { codigo: sala, nombre, pro: Boolean(pro), creada: ahora });
         const claveDia = `d:${dia(ahora)}`;
         const cuenta = (await this.ctx.storage.get(claveDia)) ?? { gratis: 0, pro: 0 };
         cuenta[pro ? 'pro' : 'gratis'] += 1;
@@ -48,6 +50,14 @@ export class Registro extends DurableObject {
         };
         registro.salas = [{ sala, en: ahora }, ...registro.salas].slice(0, MAX_SALAS_POR_CODIGO);
         await this.ctx.storage.put(clave, registro);
+    }
+
+    async quitarSala(sala) {
+        await this.ctx.storage.delete(`s:${sala}`);
+    }
+
+    async salas() {
+        return [...(await this.ctx.storage.list({ prefix: 's:' })).values()].sort((a, b) => b.creada - a.creada);
     }
 
     async resumen() {
