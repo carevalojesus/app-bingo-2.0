@@ -710,6 +710,14 @@ $('velocidadBtn').addEventListener('click', () => {
     avisar(`Una bola cada ${estado.intervalo / 1000} segundos`);
 });
 
+// Los botones de la barra y de los controles sueltan el foco al pulsarlos con el ratón (o el dedo):
+// si no, el Espacio (play/pausa) volvería a pulsar el último botón usado, p. ej. cambiaría la voz.
+// Con el teclado (e.detail === 0) el foco se queda, como debe ser.
+document.addEventListener('click', (e) => {
+    const boton = e.target.closest('header button, header a, #controles button');
+    if (boton && e.detail > 0) boton.blur();
+});
+
 document.addEventListener('keydown', (e) => {
     if (modalAbierto) {
         if (e.key === 'Escape') cerrarModal();

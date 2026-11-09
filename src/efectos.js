@@ -7,7 +7,7 @@ let volEfectos = 0.8;    // 0–1
 let volVoz = 1;          // 0–1 (volumen de la voz sintetizada)
 
 // Todos los efectos pasan por la ganancia general, así se regula el volumen en un solo sitio
-function salida(ctx) {
+function salidaGeneral(ctx) {
     if (!maestro) {
         maestro = ctx.createGain();
         maestro.gain.value = volEfectos;
@@ -72,11 +72,11 @@ export function redoble(duracion = 1) {
     const profundidad = ctx.createGain();
     profundidad.gain.value = 0.5;
     lfo.connect(profundidad).connect(tremolo.gain);
-    const salida = ctx.createGain();
-    salida.gain.setValueAtTime(0.0001, t);
-    salida.gain.exponentialRampToValueAtTime(0.35, t + duracion * 0.85);
-    salida.gain.exponentialRampToValueAtTime(0.0001, t + duracion + 0.05);
-    fuente.connect(filtro).connect(tremolo).connect(salida).connect(salida(ctx));
+    const volumen = ctx.createGain();
+    volumen.gain.setValueAtTime(0.0001, t);
+    volumen.gain.exponentialRampToValueAtTime(0.35, t + duracion * 0.85);
+    volumen.gain.exponentialRampToValueAtTime(0.0001, t + duracion + 0.05);
+    fuente.connect(filtro).connect(tremolo).connect(volumen).connect(salidaGeneral(ctx));
     fuente.start(t);
     lfo.start(t);
     fuente.stop(t + duracion + 0.1);
@@ -95,7 +95,7 @@ export function silbido(duracion = 0.6) {
     filtro.frequency.setValueAtTime(500, t);
     filtro.frequency.exponentialRampToValueAtTime(3200, t + duracion);
     const g = envolvente(ctx, t, 0.3, duracion * 0.7, duracion * 0.3);
-    fuente.connect(filtro).connect(g).connect(salida(ctx));
+    fuente.connect(filtro).connect(g).connect(salidaGeneral(ctx));
     fuente.start(t);
     fuente.stop(t + duracion + 0.05);
 }
@@ -110,7 +110,7 @@ export function campana() {
         osc.type = 'sine';
         osc.frequency.value = f;
         const g = envolvente(ctx, t, 0.16 / (i + 1), 0.005, 1.1);
-        osc.connect(g).connect(salida(ctx));
+        osc.connect(g).connect(salidaGeneral(ctx));
         osc.start(t);
         osc.stop(t + 1.2);
     });
@@ -126,7 +126,7 @@ export function golpe(fuerza = 1) {
     osc.frequency.setValueAtTime(150, t);
     osc.frequency.exponentialRampToValueAtTime(40, t + 0.3);
     const g = envolvente(ctx, t, 0.7 * fuerza, 0.005, 0.35);
-    osc.connect(g).connect(salida(ctx));
+    osc.connect(g).connect(salidaGeneral(ctx));
     osc.start(t);
     osc.stop(t + 0.4);
 
@@ -135,7 +135,7 @@ export function golpe(fuerza = 1) {
     filtro.type = 'highpass';
     filtro.frequency.value = 1800;
     const gc = envolvente(ctx, t, 0.25 * fuerza, 0.002, 0.06);
-    chasquido.connect(filtro).connect(gc).connect(salida(ctx));
+    chasquido.connect(filtro).connect(gc).connect(salidaGeneral(ctx));
     chasquido.start(t);
     chasquido.stop(t + 0.1);
 }
@@ -156,7 +156,7 @@ export function fanfarria() {
             filtro.type = 'lowpass';
             filtro.frequency.value = 2400;
             const g = envolvente(ctx, t, 0.07, 0.02, i === notas.length - 1 ? 1.1 : 0.18);
-            osc.connect(filtro).connect(g).connect(salida(ctx));
+            osc.connect(filtro).connect(g).connect(salidaGeneral(ctx));
             osc.start(t);
             osc.stop(t + 1.3);
         }
