@@ -144,6 +144,17 @@ suspend fun consultarSala(codigo: String): ResumenSala = withContext(Dispatchers
     }
 }
 
+/** Crea una sala (POST /api/salas, como sala.html). Devuelve (código, llave de anfitrión). */
+suspend fun crearSala(config: JsonObject): Pair<String, String> = withContext(Dispatchers.IO) {
+    val r = http.newCall(Request.Builder().url("$SERVIDOR/api/salas").post(config.toString().toRequestBody("application/json".toMediaType())).build()).execute()
+    r.use {
+        val texto = it.body.string()
+        if (!it.isSuccessful) throw ErrorServidor(mensajeDeError(texto, it.code))
+        val o = json.parseToJsonElement(texto).jsonObject
+        (o.texto("codigo") ?: throw ErrorServidor("Respuesta no válida.")) to (o.texto("tokenAnfitrion") ?: throw ErrorServidor("Respuesta no válida."))
+    }
+}
+
 /** Canjea el código de 6 cifras que muestra el show por la llave de anfitrión. */
 suspend fun vincularAnfitrion(codigo: String, cifras: String): String = withContext(Dispatchers.IO) {
     val cuerpo = buildJsonObject { put("codigo", cifras) }.toString().toRequestBody("application/json".toMediaType())

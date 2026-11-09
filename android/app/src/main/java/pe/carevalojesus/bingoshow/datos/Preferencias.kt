@@ -24,6 +24,11 @@ class Preferencias(contexto: Context) {
         get() = p.getBoolean("sonido", true)
         set(v) = p.edit().putBoolean("sonido", v).apply()
 
+    /** El teléfono canta las bolas en voz alta. */
+    var voz: Boolean
+        get() = p.getBoolean("voz", false)
+        set(v) = p.edit().putBoolean("voz", v).apply()
+
     fun tokenJugador(sala: String): String? = p.getString("jugador.$sala", null)
     fun guardarTokenJugador(sala: String, token: String) = p.edit().putString("jugador.$sala", token).apply()
     fun borrarTokenJugador(sala: String) = p.edit().remove("jugador.$sala").apply()

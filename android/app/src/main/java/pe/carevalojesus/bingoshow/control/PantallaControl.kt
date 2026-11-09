@@ -24,6 +24,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.rememberSaveable
+import pe.carevalojesus.bingoshow.jugador.ahoraVivo
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,6 +64,8 @@ private val hora = SimpleDateFormat("HH:mm", Locale.forLanguageTag("es-PE"))
 @Composable
 fun PantallaControl(vm: ControlViewModel, alVolver: () -> Unit) {
     val s = vm.sala
+    var crear by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(vm.codigo) { if (vm.codigo != null) crear = false }
     Box(Modifier.fillMaxSize()) {
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).safeDrawingPadding().imePadding().padding(16.dp),
@@ -71,7 +79,8 @@ fun PantallaControl(vm: ControlViewModel, alVolver: () -> Unit) {
             )
             Column(Modifier.widthIn(max = 520.dp).fillMaxWidth().padding(top = 16.dp)) {
                 when {
-                    vm.codigo == null -> Vincular(vm)
+                    vm.codigo == null && crear -> FormularioCrear(vm) { crear = false }
+                    vm.codigo == null -> Vincular(vm) { crear = true }
                     s == null -> Carta(Modifier.fillMaxWidth()) { Text("Conectando con la sala…", style = ui(16.sp, FontWeight.Black)) }
                     else -> Panel(vm, s)
                 }
@@ -91,9 +100,15 @@ fun PantallaControl(vm: ControlViewModel, alVolver: () -> Unit) {
 }
 
 @Composable
-private fun Vincular(vm: ControlViewModel) {
+private fun Vincular(vm: ControlViewModel, alCrear: () -> Unit) {
     Carta(Modifier.fillMaxWidth(), relleno = 20.dp) {
-        Text("Controla tu sala desde aquí", style = display(24.sp))
+        Text("¿Sala nueva?", style = display(22.sp))
+        Text("Créala desde aquí y luego abre el show con el bombo en la tele.", Modifier.padding(top = 2.dp), style = ui(13.sp, FontWeight.Bold, Colores.tinta.copy(alpha = 0.7f)))
+        Boton("Crear sala", alCrear, Modifier.fillMaxWidth().padding(top = 12.dp), fondo = Colores.girasol, alto = 52.dp)
+    }
+    Spacer(Modifier.height(20.dp))
+    Carta(Modifier.fillMaxWidth(), relleno = 20.dp) {
+        Text("¿Ya tienes una sala?", style = display(22.sp))
         Text(
             "En el show, pulsa «📱 Controlar desde mi móvil» y escribe el código de 6 cifras que aparece.",
             Modifier.padding(top = 4.dp), style = ui(14.sp, FontWeight.Bold, Colores.tinta.copy(alpha = 0.7f)),
@@ -153,6 +168,8 @@ private fun Panel(vm: ControlViewModel, s: Estado) {
             }
         }
     }
+
+    PantallaShow(vm, s)
 
     val pedidos = s.solicitudes.associateBy { it.jugadorId }
     val pendientes = s.jugadores.filter { !it.admitido || it.id in pedidos }
@@ -256,4 +273,39 @@ private fun Panel(vm: ControlViewModel, s: Estado) {
         "DESVINCULAR ESTE MÓVIL", Modifier.fillMaxWidth().padding(vertical = 24.dp).clickable { vm.desvincular() },
         style = ui(12.sp, FontWeight.Black, Colores.crema.copy(alpha = 0.7f)).copy(letterSpacing = 1.sp), textAlign = TextAlign.Center,
     )
+}
+
+/** Llevar la sala a la pantalla grande e invitar a los jugadores. */
+@Composable
+private fun PantallaShow(vm: ControlViewModel, s: Estado) {
+    val contexto = LocalContext.current
+    val ahora = ahoraVivo()
+    val compartir = { texto: String ->
+        contexto.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, texto) }, "Compartir"))
+    }
+    Carta(Modifier.fillMaxWidth().padding(top = 20.dp)) {
+        Text("Pantalla del show", style = display(20.sp))
+        Text(
+            "En la tele o la laptop abre ${vm.enlaceShow().substringAfter("://")} y escribe ahí el código que generes aquí. Vale 2 minutos y un solo uso.",
+            Modifier.padding(top = 4.dp), style = ui(13.sp, FontWeight.Bold, Colores.tinta.copy(alpha = 0.7f)),
+        )
+        val codigo = vm.codigoShow?.takeIf { vm.codigoShowHasta > ahora }
+        if (codigo != null) {
+            Recuadro(Modifier.fillMaxWidth().padding(top = 10.dp), fondo = Colores.girasol) {
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(codigo.chunked(3).joinToString(" "), style = display(36.sp).copy(letterSpacing = 4.sp))
+                    val seg = (vm.codigoShowHasta - ahora) / 1000
+                    Text("Caduca en ${seg / 60}:${"%02d".format(seg % 60)}", style = ui(12.sp, FontWeight.Black))
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Boton(if (codigo != null) "Otro código" else "Generar código", vm::pedirCodigoShow, Modifier.weight(1f), fondo = Colores.menta, alto = 46.dp, estilo = ui(12.sp, FontWeight.Black))
+            Boton("Enviar enlace", { compartir("Show de Bingo Show (sala ${s.codigo}): ${vm.enlaceShow()}") }, Modifier.weight(1f), alto = 46.dp, estilo = ui(12.sp, FontWeight.Black))
+        }
+        Boton(
+            "📤 Invitar jugadores", { compartir("¡Ven a jugar bingo${if (s.nombre.isNotBlank()) " en ${s.nombre}" else ""}! Sala ${s.codigo}: ${vm.enlaceJugar()}") },
+            Modifier.fillMaxWidth().padding(top = 8.dp), fondo = Colores.girasol, alto = 46.dp,
+        )
+    }
 }

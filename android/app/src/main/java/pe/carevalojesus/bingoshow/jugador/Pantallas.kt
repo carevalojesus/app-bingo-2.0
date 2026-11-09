@@ -32,6 +32,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalContext
+import android.content.Intent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -169,7 +173,7 @@ private fun Historial(vm: JugadorViewModel) {
 }
 
 @Composable
-fun Cabecera(titulo: String, subtitulo: String, conexion: EstadoConexion?, logo: androidx.compose.ui.graphics.ImageBitmap? = null, sonido: Boolean? = null, alSonido: () -> Unit = {}, alVolver: (() -> Unit)? = null) {
+fun Cabecera(titulo: String, subtitulo: String, conexion: EstadoConexion?, logo: androidx.compose.ui.graphics.ImageBitmap? = null, sonido: Boolean? = null, alSonido: () -> Unit = {}, alVolver: (() -> Unit)? = null, voz: Boolean? = null, alVoz: () -> Unit = {}) {
     Row(Modifier.fillMaxWidth().widthIn(max = 560.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Box(Modifier.then(if (alVolver != null) Modifier.clickable(onClick = alVolver) else Modifier)) {
             if (logo != null) {
@@ -187,6 +191,12 @@ fun Cabecera(titulo: String, subtitulo: String, conexion: EstadoConexion?, logo:
                 if (conexion == EstadoConexion.RECONECTANDO) Colores.crema else Colores.tinta,
             )
         }
+        if (voz != null) {
+            Box(
+                Modifier.size(42.dp).clip(RoundedCornerShape(10.dp)).background(if (voz) Colores.girasol else Colores.crema).border(2.5.dp, Colores.tinta, RoundedCornerShape(10.dp)).clickable(onClick = alVoz),
+                contentAlignment = Alignment.Center,
+            ) { Text(if (voz) "🗣️" else "🤐", style = ui(18.sp)) }
+        }
         if (sonido != null) {
             Box(
                 Modifier.size(42.dp).clip(RoundedCornerShape(10.dp)).background(Colores.crema).border(2.5.dp, Colores.tinta, RoundedCornerShape(10.dp)).clickable(onClick = alSonido),
@@ -203,6 +213,13 @@ fun Cabecera(titulo: String, subtitulo: String, conexion: EstadoConexion?, logo:
 fun PantallaSala(vm: JugadorViewModel) {
     val s = vm.sala
     val ahora = ahoraVivo()
+    // Pantalla siempre encendida mientras hay partida (o cuenta atrás): no te pierdes bolas
+    val vista = LocalView.current
+    val encender = s?.enJuego == true || vm.cuentaHasta != null
+    DisposableEffect(encender) {
+        vista.keepScreenOn = encender
+        onDispose { vista.keepScreenOn = false }
+    }
     Box(Modifier.fillMaxSize()) {
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).safeDrawingPadding().imePadding().padding(16.dp),
@@ -218,7 +235,7 @@ fun PantallaSala(vm: JugadorViewModel) {
             }
             Cabecera(
                 s?.nombre?.ifBlank { null } ?: "Bingo Show", "Sala ${vm.codigo} · $estadoTexto", vm.conexion, vm.logo,
-                vm.sonido, vm::cambiarSonido,
+                vm.sonido, vm::cambiarSonido, voz = vm.voz, alVoz = vm::cambiarVoz,
             )
             Column(Modifier.widthIn(max = 520.dp).fillMaxWidth().padding(top = 16.dp)) {
                 if (s == null) {
@@ -306,6 +323,7 @@ private fun VistaLobby(vm: JugadorViewModel, s: Estado, ahora: Long) {
         Extras(s)
         Etiqueta("Premios", Modifier.padding(top = 14.dp, bottom = 6.dp))
         ListaPremios(s, vm.miId)
+        BotonInvitar(vm, s)
     }
 
     val mios = s.misCartones(vm.miId)
@@ -718,6 +736,36 @@ private fun CapaCelebracion(vm: JugadorViewModel, c: Celebracion) {
                 Modifier.padding(top = 12.dp), style = ui(14.sp, FontWeight.Bold),
             )
             Boton("Seguir", { vm.celebracion = null }, Modifier.fillMaxWidth().padding(top = 14.dp), fondo = Colores.menta)
+        }
+    }
+}
+
+@Composable
+private fun BotonInvitar(vm: JugadorViewModel, s: Estado) {
+    val contexto = LocalContext.current
+    Boton(
+        "📤 Invitar a la sala", {
+            val texto = "¡Ven a jugar bingo conmigo${if (s.nombre.isNotBlank()) " en ${s.nombre}" else ""}! Sala ${s.codigo}: ${vm.enlaceSala()}"
+            contexto.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, texto) }, "Invitar"))
+        },
+        Modifier.fillMaxWidth().padding(top = 14.dp), fondo = Colores.menta, alto = 46.dp,
+    )
+}
+
+/** Ventana flotante (picture-in-picture): última bola y cuánto te falta. */
+@Composable
+fun VistaPip(vm: JugadorViewModel) {
+    val s = vm.sala
+    val ultima = s?.bolas?.lastOrNull()
+    val salidas = s?.bolas?.toSet() ?: emptySet()
+    val mios = vm.misNumeros()
+    Row(Modifier.fillMaxSize().background(Colores.escenario).padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Ficha(ultima, 64.dp)
+        Column(Modifier.weight(1f)) {
+            Text(ultima?.let { nombreBola(it) } ?: "—", style = display(20.sp, Colores.crema))
+            Text("${s?.bolas?.size ?: 0}/75", style = ui(11.sp, FontWeight.Black, Colores.crema.copy(alpha = 0.8f)))
+            if (mios.isNotEmpty()) Text("Tuyos: ${mios.count { it in salidas }}/${mios.size}", style = ui(11.sp, FontWeight.Black, Colores.girasol))
+            if (s?.estado == "pausa") Text("EN PAUSA", style = ui(10.sp, FontWeight.Black, Colores.tomate))
         }
     }
 }

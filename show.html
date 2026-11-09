@@ -310,6 +310,15 @@
     <div class="carta w-full max-w-md p-6 text-center shadow-duro-lg">
         <h2 id="salaAvisoTitulo" class="font-display text-2xl sm:text-3xl"></h2>
         <p id="salaAvisoTexto" class="mt-2 font-ui font-bold text-tinta/70"></p>
+        <!-- Sala creada desde la app: el show se vincula con el código de 6 cifras que muestra la app -->
+        <form id="salaVincular" class="mt-5 hidden text-left" novalidate autocomplete="off">
+            <label for="salaVincularCodigo" class="etiqueta block">¿Creaste la sala en la app? Escribe el código de 6 cifras</label>
+            <div class="mt-1.5 flex gap-2">
+                <input id="salaVincularCodigo" maxlength="6" inputmode="numeric" placeholder="123456" class="campo min-w-0 flex-1 font-display text-2xl tracking-[0.3em]">
+                <button type="submit" class="boton h-12 shrink-0 bg-menta px-4">Vincular</button>
+            </div>
+            <p id="salaVincularError" class="mt-2 hidden text-sm font-black text-tomate" role="alert"></p>
+        </form>
         <div id="salaAvisoAcciones" class="mt-6 grid gap-3"></div>
     </div>
 </div>

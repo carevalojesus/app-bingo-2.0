@@ -39,6 +39,19 @@ import pe.carevalojesus.bingoshow.logica.SemillaCliente
 import pe.carevalojesus.bingoshow.logica.nombreBola
 import pe.carevalojesus.bingoshow.logica.verificarPartida
 import pe.carevalojesus.bingoshow.ui.Efectos
+import pe.carevalojesus.bingoshow.ui.Narrador
+import pe.carevalojesus.bingoshow.servicio.Notificador
+import pe.carevalojesus.bingoshow.servicio.ServicioPartida
+import pe.carevalojesus.bingoshow.datos.SERVIDOR
+import pe.carevalojesus.bingoshow.logica.generarCarton
+import pe.carevalojesus.bingoshow.logica.numerosDeFila
+import pe.carevalojesus.bingoshow.logica.verificar
+import pe.carevalojesus.bingoshow.MainActivity
+import android.content.Intent
+import android.net.Uri
+import androidx.core.content.pm.ShortcutInfoCompat
+import androidx.core.content.pm.ShortcutManagerCompat
+import androidx.core.graphics.drawable.IconCompat
 import java.io.IOException
 
 data class Aviso(val id: Long, val texto: String, val error: Boolean = false)
@@ -51,6 +64,8 @@ val REACCIONES = listOf("😱", "🔥", "👏", "😂", "🙏", "🍀")
 class JugadorViewModel(app: Application) : AndroidViewModel(app) {
     val prefs = Preferencias(app)
     val efectos = Efectos(app) { prefs.sonido }
+    private val narrador = Narrador(app)
+    private val contexto = app
 
     // ---------- Entrar ----------
     var codigoEntrada by mutableStateOf("")
@@ -81,6 +96,7 @@ class JugadorViewModel(app: Application) : AndroidViewModel(app) {
     val cantando = mutableStateMapOf<Int, Long>()
     var marcarSolo by mutableStateOf(prefs.marcarSolo)
     var sonido by mutableStateOf(prefs.sonido)
+    var voz by mutableStateOf(prefs.voz)
     val marcas = mutableStateMapOf<Int, Set<Int>>()
     private var serieMarcas: String? = null
     var borrador by mutableStateOf(setOf<Int>())
@@ -146,6 +162,8 @@ class JugadorViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         conexionSala = conexionNueva
+        ServicioPartida.iniciar(contexto, "jugador")
+        accesoDirecto(c)
         viewModelScope.launch { conexionNueva.estado.collect { conexion = it } }
         viewModelScope.launch { conexionNueva.mensajes.collect(::recibir) }
         conexionNueva.abrir()
@@ -155,6 +173,7 @@ class JugadorViewModel(app: Application) : AndroidViewModel(app) {
         val c = codigo
         conexionSala?.cerrar()
         conexionSala = null
+        ServicioPartida.detener(contexto, "jugador")
         if (olvidar && c != null) prefs.borrarTokenJugador(c)
         codigo = null
         sala = null
@@ -191,13 +210,20 @@ class JugadorViewModel(app: Application) : AndroidViewModel(app) {
             "bola" -> {
                 ultimaBolaNueva = System.currentTimeMillis()
                 celebracion = null
-                efectos.vibrar(60)
-                efectos.campana()
+                val n = m.entero("numero")
+                if (voz && n != null) narrador.bola(n)
+                // Vibración distinta si la bola está en tus cartones: se puede jugar sin mirar
+                if (n != null && n in misNumeros()) { efectos.vibrar(90, 60, 180); efectos.golpe() }
+                else { efectos.vibrar(35); efectos.campana() }
             }
             "ganador" -> {
                 val ganadores = m["ganadores"]?.let { json.decodeFromJsonElement(kotlinx.serialization.builtins.ListSerializer(Ganador.serializer()), it) } ?: emptyList()
                 celebracion = Celebracion(m.texto("modalidad") ?: "", ganadores, m.texto("siguiente"), m.entero("bote") ?: 0)
-                if (ganadores.any { it.jugadorId == miId }) { efectos.vibrar(150, 80, 150, 80, 300); efectos.fanfarria() }
+                val mios = ganadores.filter { it.jugadorId == miId }
+                if (mios.isNotEmpty()) {
+                    efectos.vibrar(150, 80, 150, 80, 300); efectos.fanfarria()
+                    Notificador.alerta(contexto, "¡Ganaste! 🎉", "Te llevas ${mios.sumOf { it.fichas + it.bote }} fichas en ${sala?.nombre?.ifBlank { null } ?: "la sala $codigo"}.")
+                }
                 else { efectos.vibrar(100); efectos.golpe() }
             }
             "bingoRechazado" -> {
@@ -221,6 +247,7 @@ class JugadorViewModel(app: Application) : AndroidViewModel(app) {
                 avisar(m.texto("mensaje") ?: "Algo salió mal.", true)
             }
             "expulsado" -> {
+                Notificador.alerta(contexto, "Saliste de la sala", "El anfitrión te sacó de la sala $codigo.")
                 salir(olvidar = true)
                 expulsado = true
                 efectos.vibrar(80, 60, 80)
@@ -244,12 +271,14 @@ class JugadorViewModel(app: Application) : AndroidViewModel(app) {
             }
             "admitido" -> {
                 avisar("¡El anfitrión te admitió! Ya puedes elegir.")
+                Notificador.alerta(contexto, "¡Ya puedes jugar!", "El anfitrión te admitió en la sala $codigo.")
                 efectos.vibrar(80, 60, 80)
                 efectos.campana()
             }
             "fichas" -> {
                 val n = m.entero("cantidad") ?: 0
                 if (n > 0) pedido = null
+                if (n > 0) Notificador.alerta(contexto, "Recibiste $n fichas", "Tu saldo: ${m.entero("saldo")} fichas.")
                 avisar(if (n > 0) "Recibiste $n fichas. Saldo: ${m.entero("saldo")}." else "El anfitrión corrigió tu saldo ($n). Saldo: ${m.entero("saldo")}.")
                 efectos.vibrar(*if (n > 0) longArrayOf(60, 40, 120) else longArrayOf(60))
                 if (n > 0) efectos.campana()
@@ -272,6 +301,9 @@ class JugadorViewModel(app: Application) : AndroidViewModel(app) {
             falta1Avisados.clear()
         }
         if (nuevo.estado == "lobby") cantando.clear()
+        if (anterior?.estado == "lobby" && nuevo.estado == "jugando") Notificador.alerta(contexto, "¡Empieza la partida!", "La sala ${nuevo.codigo} ya está sacando bolas.")
+        actualizarNotificacion()
+        revisarCartones()
         if (anterior != null && anterior.estado != "terminada" && nuevo.estado == "terminada") registrarHistorial(nuevo)
         // Logo del evento (Pro)
         if (nuevo.logo != logoVersion) {
@@ -413,8 +445,11 @@ class JugadorViewModel(app: Application) : AndroidViewModel(app) {
         if (s.estado != "jugando") return
         val nuevosCompletos = completos.filter { completosAvisados.add(it) }
         val nuevosCasi = casi.filter { falta1Avisados.add(it.first) }
-        if (nuevosCompletos.isNotEmpty()) { efectos.vibrar(120, 80, 120); efectos.fanfarria() }
-        else if (nuevosCasi.isNotEmpty()) {
+        if (nuevosCompletos.isNotEmpty()) {
+            efectos.vibrar(120, 80, 120); efectos.fanfarria()
+            Notificador.alerta(contexto, "¡${unidades(s).first.replaceFirstChar { it.uppercase() }} completo!", if (s.config.esAuto) "El premio se entrega solo." else "¡Abre la app y canta ¡Bingo!")
+        } else if (nuevosCasi.isNotEmpty()) {
+            Notificador.alerta(contexto, "¡Te falta 1!", nuevosCasi.joinToString(" · ") { it.second })
             avisar("¡Te falta 1! ${nuevosCasi.joinToString(" · ") { it.second }}")
             efectos.vibrar(60, 40, 60, 40, 60)
             efectos.golpe()
@@ -430,9 +465,86 @@ class JugadorViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    // ---------- Extras de la app nativa ----------
+    fun cambiarVoz() {
+        voz = !voz
+        prefs.voz = voz
+        if (voz) narrador.decir("Voz activada")
+    }
+
+    /** Enlace para invitar a la sala (abre la app si la tienen; si no, la web). */
+    fun enlaceSala(): String = "$SERVIDOR/jugar.html?sala=${codigo ?: ""}"
+
+    /** Todos los números de tus cartones, filas o jugadas en la partida actual. */
+    fun misNumeros(): Set<Int> {
+        val s = sala ?: return emptySet()
+        val mios = s.misCartones(miId)
+        return when {
+            s.config.esFila -> mios.flatMap { numerosDeFila(it) }
+            s.config.esElige -> mios.flatMap { s.jugadas[it.toString()] ?: emptyList() }
+            else -> { val serie = s.serie ?: return emptySet(); mios.flatMap { n -> generarCarton(serie, n).columnas.flatten().filterNotNull() } }
+        }.toSet()
+    }
+
+    /** «Te falta 1» y «¡completo!» calculados aquí, para avisar también con la app en segundo plano. */
+    private fun revisarCartones() {
+        val s = sala ?: return
+        if (s.estado != "jugando") return
+        val salidas = s.bolas.toSet()
+        val (uno, _) = unidades(s)
+        val completos = mutableListOf<String>()
+        val casi = mutableListOf<Pair<String, String>>()
+        for (n in s.misCartones(miId)) {
+            if (s.config.esAuto) {
+                val numeros = if (s.config.esFila) numerosDeFila(n) else s.jugadas[n.toString()] ?: continue
+                val faltan = numeros.filter { it !in salidas }
+                val clave = "${s.serie}:$uno$n"
+                if (faltan.isEmpty()) completos += clave
+                if (faltan.size == 1) casi += clave to "$uno $n (${nombreBola(faltan[0])})"
+            } else {
+                val serie = s.serie ?: return
+                val r = verificar(generarCarton(serie, n), marcasDe(n), s.premioEnJuego()?.modalidad ?: "lleno")
+                val clave = "$serie:$n:${s.premioActual}"
+                if (r.gana) completos += clave
+                if (!r.gana && r.faltan.size == 1) casi += clave to "cartón $n (${nombreBola(r.faltan[0])})"
+            }
+        }
+        avisarCartones(completos, casi)
+    }
+
+    private fun actualizarNotificacion() {
+        val s = sala ?: return
+        val titulo = s.nombre.ifBlank { "Sala ${s.codigo}" }
+        val yo = s.jugador(miId)
+        val texto = when (s.estado) {
+            "lobby" -> "Eligiendo ${unidades(s).second} · tienes ${s.misCartones(miId).size}"
+            "jugando", "pausa" -> {
+                val ultima = s.bolas.lastOrNull()?.let { "Última bola: ${nombreBola(it)}" } ?: "Empezando…"
+                "$ultima · ${s.bolas.size}/75${if (s.estado == "pausa") " · en pausa" else ""}"
+            }
+            else -> "Partida terminada"
+        } + (yo?.let { " · ${it.fichas} fichas" } ?: "")
+        Notificador.actualizar(contexto, titulo, texto)
+    }
+
+    /** Acceso directo «Volver a la sala X» al mantener pulsado el icono. */
+    private fun accesoDirecto(c: String) {
+        runCatching {
+            val atajo = ShortcutInfoCompat.Builder(contexto, "ultima-sala")
+                .setShortLabel("Sala $c")
+                .setLongLabel("Volver a la sala $c")
+                .setIcon(IconCompat.createWithResource(contexto, pe.carevalojesus.bingoshow.R.drawable.atajo_sala))
+                .setIntent(Intent(Intent.ACTION_VIEW, Uri.parse("$SERVIDOR/jugar.html?sala=$c"), contexto, MainActivity::class.java))
+                .build()
+            ShortcutManagerCompat.pushDynamicShortcut(contexto, atajo)
+        }
+    }
+
     override fun onCleared() {
         conexionSala?.cerrar()
+        ServicioPartida.detener(contexto, "jugador")
         efectos.liberar()
+        narrador.liberar()
     }
 }
 

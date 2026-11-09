@@ -30,7 +30,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import pe.carevalojesus.bingoshow.jugador.VistaPip
+import pe.carevalojesus.bingoshow.servicio.Notificador
 import pe.carevalojesus.bingoshow.control.ControlViewModel
 import pe.carevalojesus.bingoshow.control.PantallaControl
 import pe.carevalojesus.bingoshow.datos.SERVIDOR
@@ -49,8 +54,17 @@ import pe.carevalojesus.bingoshow.ui.ui
 
 enum class Vista { INICIO, ENTRAR, ESCANER, CONTROL }
 
+const val ACCION_ESCANEAR = "pe.carevalojesus.bingoshow.ESCANEAR"
+const val ACCION_CONTROL = "pe.carevalojesus.bingoshow.CONTROL"
+
 /** Enlace abierto desde fuera (QR escaneado con la cámara, WhatsApp…). */
 data class Enlace(val rol: String, val sala: String, val id: Long = System.nanoTime())
+
+fun enlaceDe(intent: Intent?): Enlace? = when (intent?.action) {
+    ACCION_ESCANEAR -> Enlace("escanear", "")
+    ACCION_CONTROL -> Enlace("anfitrion", "")
+    else -> enlaceDe(intent?.data)
+}
 
 fun enlaceDe(uri: Uri?): Enlace? {
     uri ?: return null
@@ -64,16 +78,31 @@ fun enlaceDe(uri: Uri?): Enlace? {
 }
 
 @Composable
-fun App(enlace: Enlace?) {
-    val jugador: JugadorViewModel = viewModel()
-    val control: ControlViewModel = viewModel()
+fun App(enlace: Enlace?, jugador: JugadorViewModel, control: ControlViewModel, enPip: Boolean, permitirPip: (Boolean) -> Unit) {
     var vista by rememberSaveable { mutableStateOf(Vista.INICIO) }
 
     LaunchedEffect(enlace?.id) {
         val e = enlace ?: return@LaunchedEffect
-        if (e.rol == "anfitrion") { vista = Vista.CONTROL; control.prepararCodigo(e.sala) }
-        else { if (jugador.codigo == null) jugador.abrirEnlace(e.sala); vista = Vista.ENTRAR }
+        when (e.rol) {
+            "escanear" -> vista = Vista.ESCANER
+            "anfitrion" -> { vista = Vista.CONTROL; control.prepararCodigo(e.sala) }
+            else -> { if (jugador.codigo == null) jugador.abrirEnlace(e.sala); vista = Vista.ENTRAR }
+        }
     }
+
+    // Ventana flotante solo con partida en marcha y viendo la sala
+    val jugando = vista == Vista.ENTRAR && jugador.codigo != null && jugador.sala?.enJuego == true
+    LaunchedEffect(jugando) { permitirPip(jugando) }
+
+    // Permiso de notificaciones (Android 13+): se pide al entrar en una sala, no al abrir la app
+    val contexto = LocalContext.current
+    val pedirPermiso = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    val enSala = jugador.codigo != null || control.codigo != null
+    LaunchedEffect(enSala) {
+        if (enSala && Build.VERSION.SDK_INT >= 33 && !Notificador.puedeNotificar(contexto)) pedirPermiso.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    if (enPip) { VistaPip(jugador); return }
 
     Fondo {
         when {

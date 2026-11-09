@@ -26,6 +26,11 @@ import pe.carevalojesus.bingoshow.datos.tipo
 import pe.carevalojesus.bingoshow.datos.vincularAnfitrion
 import pe.carevalojesus.bingoshow.ui.Efectos
 import java.io.IOException
+import pe.carevalojesus.bingoshow.datos.SERVIDOR
+import pe.carevalojesus.bingoshow.datos.crearSala
+import pe.carevalojesus.bingoshow.servicio.Notificador
+import pe.carevalojesus.bingoshow.servicio.ServicioPartida
+import pe.carevalojesus.bingoshow.logica.nombreBola
 
 /** Control del anfitrión desde el móvil (como anfitrion.html): vincular, empezar, pausar, admitir y dar fichas. */
 class ControlViewModel(app: Application) : AndroidViewModel(app) {
@@ -45,6 +50,39 @@ class ControlViewModel(app: Application) : AndroidViewModel(app) {
     val porRechazar = mutableStateListOf<String>()
 
     private var conexionSala: ConexionSala? = null
+    private val contexto = app
+
+    /** Código de 6 cifras para vincular el show de la tele (lo pide el anfitrión desde aquí). */
+    var codigoShow by mutableStateOf<String?>(null)
+    var codigoShowHasta by mutableStateOf(0L)
+
+    // ---------- Crear sala desde la app ----------
+    var creando by mutableStateOf(false)
+    var errorCrear by mutableStateOf<String?>(null)
+
+    fun crear(config: JsonObject) {
+        creando = true
+        errorCrear = null
+        viewModelScope.launch {
+            try {
+                val (c, token) = crearSala(config)
+                prefs.guardarTokenAnfitrion(c, token)
+                conectar(c)
+            } catch (e: ErrorServidor) {
+                errorCrear = e.message
+            } catch (_: IOException) {
+                errorCrear = "No se pudo contactar con el servidor. Revisa la conexión."
+            } finally {
+                creando = false
+            }
+        }
+    }
+
+    /** Pide al servidor un código de un solo uso para que el show de la tele tome el control de la sala. */
+    fun pedirCodigoShow() = enviar(mensaje("vincular"))
+
+    fun enlaceJugar(): String = "$SERVIDOR/jugar.html?sala=${codigo ?: ""}"
+    fun enlaceShow(): String = "$SERVIDOR/show.html?sala=${codigo ?: ""}"
 
     fun salasGuardadas() = prefs.salasAnfitrion()
 
@@ -85,6 +123,7 @@ class ControlViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { nueva.estado.collect { conexion = it } }
         viewModelScope.launch { nueva.mensajes.collect(::recibir) }
         nueva.abrir()
+        ServicioPartida.iniciar(contexto, "control")
     }
 
     private fun recibir(m: JsonObject) {
@@ -98,12 +137,28 @@ class ControlViewModel(app: Application) : AndroidViewModel(app) {
                 } else avisar(texto)
             }
             "bienvenida", "estado" -> m["estado"]?.let { e ->
-                runCatching { json.decodeFromJsonElement(Estado.serializer(), e) }.getOrNull()?.let { sala = it }
+                runCatching { json.decodeFromJsonElement(Estado.serializer(), e) }.getOrNull()?.let { nuevo ->
+                    val antes = sala
+                    sala = nuevo
+                    // Alguien nuevo esperando a que lo admitas
+                    val nuevos = nuevo.jugadores.filter { j -> !j.admitido && antes?.jugadores?.none { it.id == j.id } == true }
+                    for (j in nuevos) {
+                        efectos.vibrar(80, 50, 80); efectos.campana()
+                        Notificador.alerta(contexto, "${j.apodo} quiere jugar", "Está esperando a que lo admitas en la sala ${nuevo.codigo}.")
+                    }
+                    actualizarNotificacion()
+                }
+            }
+            "vinculo" -> {
+                codigoShow = m.texto("codigo")
+                codigoShowHasta = m.texto("expira")?.toDoubleOrNull()?.toLong() ?: (System.currentTimeMillis() + 120_000)
             }
             "solicitud" -> {
+                val texto = "${m.texto("apodo") ?: "Alguien"} pide ${m.entero("cantidad") ?: 0} fichas"
                 efectos.vibrar(80, 50, 80)
                 efectos.campana()
-                avisar("${m.texto("apodo") ?: "Alguien"} pide ${m.entero("cantidad") ?: 0} fichas")
+                avisar(texto)
+                Notificador.alerta(contexto, "Solicitud de fichas", texto)
             }
             "aviso" -> m.texto("texto")?.let(::avisar)
         }
@@ -127,9 +182,23 @@ class ControlViewModel(app: Application) : AndroidViewModel(app) {
         enviar(mensaje("expulsar", "jugadorId" to id))
     }
 
+    private fun actualizarNotificacion() {
+        val s = sala ?: return
+        val estado = when (s.estado) {
+            "lobby" -> "Sala de espera · ${s.vendidos} vendidos"
+            "jugando" -> s.bolas.lastOrNull()?.let { "Jugando · ${nombreBola(it)} · ${s.bolas.size}/75" } ?: "Jugando"
+            "pausa" -> "En pausa · ${s.bolas.size}/75"
+            else -> "Terminada"
+        }
+        val pendientes = s.jugadores.count { !it.admitido } + s.solicitudes.size
+        Notificador.actualizar(contexto, "Control · ${s.nombre.ifBlank { "Sala ${s.codigo}" }}", "$estado · pozo ${s.pozo}${if (pendientes > 0) " · $pendientes pendientes" else ""}")
+    }
+
     fun desconectar() {
         conexionSala?.cerrar()
         conexionSala = null
+        codigoShow = null
+        ServicioPartida.detener(contexto, "control")
         sala = null
         codigo = null
     }
@@ -150,6 +219,7 @@ class ControlViewModel(app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         conexionSala?.cerrar()
+        ServicioPartida.detener(contexto, "control")
         efectos.liberar()
     }
 }

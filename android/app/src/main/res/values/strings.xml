@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">Bingo Show</string>
+    <string name="atajo_escanear">Escanear QR</string>
+    <string name="atajo_escanear_largo">Escanear el QR de una sala</string>
+    <string name="atajo_control">Anfitrión</string>
+    <string name="atajo_control_largo">Control del anfitrión</string>
 </resources>

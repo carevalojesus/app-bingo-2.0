@@ -58,6 +58,30 @@ const urlJugar = (codigo) => `${location.origin}/jugar.html?sala=${codigo}`;
 // show: ganchos de main.js (bola, fijarBolas, reiniciar, finalizar, correrReloj,
 // fijarVelocidad, celebrarGanador, avisar, abrirModal, cerrarModal, hayModal,
 // cantadas, sonido, columnaDe, colores, reducirMovimiento)
+// Sala creada desde la app de Android: la app pide un código de 6 cifras (un solo uso, 2 minutos)
+// y el show lo canjea por la llave de anfitrión, igual que el control remoto pero al revés.
+function prepararVinculo(codigo) {
+    const form = $('salaVincular');
+    const campo = $('salaVincularCodigo');
+    const error = $('salaVincularError');
+    form.classList.remove('hidden');
+    campo.addEventListener('input', () => { campo.value = campo.value.replace(/\D/g, '').slice(0, 6); });
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const mostrar = (texto) => { error.textContent = texto; error.classList.remove('hidden'); };
+        if (campo.value.length !== 6) return mostrar('Son 6 cifras.');
+        try {
+            const r = await fetch(`/api/salas/${codigo}/vincular`, { method: 'POST', body: JSON.stringify({ codigo: campo.value }) });
+            const datos = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(datos.error || 'No se pudo vincular.');
+            localStorage.setItem(CLAVES.anfitrion(codigo), datos.tokenAnfitrion);
+            location.reload();
+        } catch (err) {
+            mostrar(err instanceof TypeError ? 'No se pudo contactar con el servidor.' : err.message);
+        }
+    });
+}
+
 export function iniciarAnfitrion(codigo, show) {
     document.body.classList.add('en-linea', 'sala-cargando');
     $('infoCodigo').textContent = codigo;
@@ -82,6 +106,7 @@ export function iniciarAnfitrion(codigo, show) {
             { texto: 'Crear otra sala', href: 'sala.html', clase: 'bg-crema' },
             { texto: 'Show sin conexión', href: 'show.html', clase: 'bg-crema' },
         ]);
+        prepararVinculo(codigo);
         return controlador();
     }
 
