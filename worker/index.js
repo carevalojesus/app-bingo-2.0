@@ -4,6 +4,7 @@
 import { generarCodigo, codigoValido } from './juego.js';
 
 export { Sala } from './sala.js';
+export { Limitador } from './limitador.js';
 
 const MAX_CUERPO = 16 * 1024;
 const INTENTOS_CODIGO = 8;
@@ -11,7 +12,24 @@ const INTENTOS_CODIGO = 8;
 const json = (datos, status = 200) => Response.json(datos, { status });
 const sala = (env, codigo) => env.SALAS.get(env.SALAS.idFromName(codigo));
 
+// IP de quien pide. En modo prueba se puede simular otra con `x-prueba-ip` (para las pruebas E2E).
+function ipDe(request, env) {
+    if (env.MODO_PRUEBA === '1' && request.headers.get('x-prueba-ip')) return `prueba:${request.headers.get('x-prueba-ip')}`;
+    return request.headers.get('cf-connecting-ip') || 'local';
+}
+
 async function crear(request, env) {
+    // Límite de salas por IP (ver worker/limitador.js)
+    const limitador = env.LIMITES.get(env.LIMITES.idFromName(ipDe(request, env)));
+    const { permitido, reintentarEn } = await limitador.consultar();
+    if (!permitido) {
+        const minutos = Math.max(1, Math.ceil(reintentarEn / 60));
+        return Response.json(
+            { error: `Has creado demasiadas salas seguidas. Podrás crear otra en ${minutos} ${minutos === 1 ? 'minuto' : 'minutos'}.` },
+            { status: 429, headers: { 'retry-after': String(reintentarEn) } },
+        );
+    }
+
     const texto = await request.text();
     if (texto.length > MAX_CUERPO) return json({ error: 'La configuración es demasiado grande.' }, 413);
     let config = {};
@@ -31,6 +49,7 @@ async function crear(request, env) {
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ codigo, config }),
         });
+        if (respuesta.status === 201) await limitador.apuntar();
         if (respuesta.status !== 409) return respuesta;
     }
     return json({ error: 'No se pudo generar un código de sala. Inténtalo de nuevo.' }, 503);

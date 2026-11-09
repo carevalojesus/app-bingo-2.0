@@ -13,6 +13,15 @@ run_worker_first = ["/api/*"]
 name = "SALAS"
 class_name = "Sala"
 
+[[durable_objects.bindings]]
+name = "LIMITES"
+class_name = "Limitador"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Sala"]
+
+# Límite de salas por IP
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Limitador"]

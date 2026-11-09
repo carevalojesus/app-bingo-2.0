@@ -99,7 +99,7 @@ repetirse entre jugadores: si varias se completan con la misma bola, el premio s
 
 | Método y ruta | Cuerpo / respuesta |
 |---|---|
-| `POST /api/salas` | Cuerpo: configuración (parcial; se completa con los valores por defecto y se valida). Respuesta `201 { codigo, tokenAnfitrion }`. `400 { error }` si es inválida. |
+| `POST /api/salas` | Cuerpo: configuración (parcial; se completa con los valores por defecto y se valida). Respuesta `201 { codigo, tokenAnfitrion }`. `400 { error }` si es inválida. `429 { error }` + `Retry-After` si la IP superó el límite. |
 | `GET /api/salas/:codigo` | `200 { codigo, nombre, estado, jugadores: n, config }` o `404 { error }` |
 | `GET /api/salas/:codigo/ws` | Upgrade a WebSocket. Sin parámetros: la identidad se manda en el primer mensaje. |
 
@@ -107,6 +107,16 @@ repetirse entre jugadores: si varias se completan con la misma bola, el premio s
   normaliza (`toUpperCase`) y la usa como nombre del Durable Object (`idFromName`).
 - Tokens: 32 caracteres hex aleatorios. Nunca se envían a otros clientes.
 - Todo lo demás lo sirve Workers Static Assets desde la raíz del repo (ver `.assetsignore`).
+
+**Límite de salas** (`worker/limitador.js`): cada IP (`cf-connecting-ip`) puede crear como mucho
+10 salas por hora. Lo lleva un Durable Object `Limitador` por IP, que se borra solo cuando ya no
+quedan creaciones recientes. Solo cuentan las salas creadas (`201`), no las peticiones rechazadas.
+En modo prueba la cabecera `x-prueba-ip` simula otra IP (lo usa `npm run test:e2e`).
+
+**Caducidad**: una sala sin actividad durante 7 días (`CADUCIDAD_MS` en `worker/sala.js`) se borra
+entera (estado, alarma y conexiones) y su código vuelve a dar `404`. Cuenta como actividad cualquier
+cambio guardado (mensajes, bolas, rondas). Si a la hora de caducar hay alguien conectado, se aplaza.
+En modo prueba la configuración puede llevar `caducidadMs` (≥ 300) para probarlo.
 
 ## WebSocket
 

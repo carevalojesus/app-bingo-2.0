@@ -6,6 +6,8 @@ import * as juego from './juego.js';
 
 const MAX_MENSAJE = 4096;
 const CLAVE = 'sala';
+// Una sala sin actividad durante este tiempo (y sin nadie conectado) se borra
+export const CADUCIDAD_MS = 7 * 24 * 60 * 60 * 1000;
 
 const json = (datos, status = 200) => Response.json(datos, { status });
 
@@ -46,6 +48,8 @@ export class Sala extends DurableObject {
                     await this.guardar();
                     this.difundir(eventos);
                 }
+                // Salas guardadas antes de que existiera la caducidad: se les programa ahora
+                if (!this.sala.ultimaActividad) await this.guardar();
             } catch (error) {
                 console.error('No se pudo sanear la sala guardada', error);
             }
@@ -63,6 +67,10 @@ export class Sala extends DurableObject {
             const { codigo, config } = await request.json();
             try {
                 this.sala = juego.crearSala(codigo, config, { prueba: this.prueba });
+                // Solo en modo prueba: caducidad corta para poder probarla
+                if (this.prueba && Number.isInteger(config?.caducidadMs) && config.caducidadMs >= 300) {
+                    this.sala.caducidadMs = config.caducidadMs;
+                }
             } catch (error) {
                 if (error instanceof juego.ErrorJuego) return json({ error: error.message }, 400);
                 throw error;
@@ -232,6 +240,7 @@ export class Sala extends DurableObject {
     // ---------- Alarma: siguiente bola, cierre de ventana o reanudación tras premio ----------
     async alarm() {
         if (!this.sala) return;
+        if (await this.caducar()) return;
         try {
             // Normalmente hay un solo evento pendiente; el límite evita bucles si algo falla
             for (let i = 0; i < 100; i++) {
@@ -265,12 +274,36 @@ export class Sala extends DurableObject {
         try { this.difundir(eventos); } catch { /* sin instantánea posible */ }
     }
 
+    // ---------- Caducidad ----------
+    caducaEn() {
+        return (this.sala.ultimaActividad ?? Date.now()) + (this.sala.caducidadMs ?? CADUCIDAD_MS);
+    }
+
+    // Si la sala lleva demasiado sin actividad la borra entera (estado, alarma y conexiones).
+    // Con alguien conectado no se borra: cuenta como actividad y se aplaza.
+    async caducar() {
+        if (Date.now() < this.caducaEn()) return false;
+        const conectados = this.identificados();
+        if (conectados.length) {
+            await this.guardar();
+            return true;
+        }
+        for (const ws of this.ctx.getWebSockets()) {
+            try { ws.close(4004, 'Sala caducada'); } catch { /* ya cerrado */ }
+        }
+        this.sala = null;
+        await this.ctx.storage.deleteAlarm();
+        await this.ctx.storage.deleteAll();
+        return true;
+    }
+
     // ---------- Utilidades ----------
+    // Guarda la sala y programa la alarma: el próximo evento del juego o, si no hay, la caducidad
     async guardar() {
+        this.sala.ultimaActividad = Date.now();
         await this.ctx.storage.put(CLAVE, this.sala);
         const cuando = juego.proximoEvento(this.sala);
-        if (cuando === null) await this.ctx.storage.deleteAlarm();
-        else await this.ctx.storage.setAlarm(cuando);
+        await this.ctx.storage.setAlarm(Math.min(cuando ?? Infinity, this.caducaEn()));
     }
 
     identificados(excluir = null) {

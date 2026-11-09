@@ -13,11 +13,15 @@ import { join } from 'node:path';
 import assert from 'node:assert/strict';
 import { generarCarton, verificar } from '../src/carton.js';
 import { nuevaSemilla, verificarPartida } from '../src/justo.js';
+import { numerosDeFila } from '../src/filas.js';
 
 const PUERTO = Number(process.env.PUERTO || 8787);
 const BASE = `http://localhost:${PUERTO}`;
 const WS_BASE = `ws://localhost:${PUERTO}`;
 const raiz = new URL('..', import.meta.url).pathname;
+// Cada ejecución simula su propia IP (x-prueba-ip, solo en modo prueba) para no chocar con el
+// límite de salas por hora si se reutiliza un servidor ya arrancado
+const IP_PRUEBA = `e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 let wrangler = null;
 let carpetaEstado = null;
@@ -144,8 +148,8 @@ class Cliente {
     }
 }
 
-async function pedir(ruta, opciones) {
-    const r = await fetch(`${BASE}${ruta}`, opciones);
+async function pedir(ruta, opciones = {}) {
+    const r = await fetch(`${BASE}${ruta}`, { ...opciones, headers: { 'x-prueba-ip': IP_PRUEBA, ...(opciones.headers || {}) } });
     return { status: r.status, datos: await r.json() };
 }
 
@@ -409,7 +413,178 @@ async function principal() {
     assert.equal(infoFinal.datos.estado, 'lobby');
 
     for (const c of [anfitrion, ana, beto]) c.cerrar();
+
+    await modoFila();
+    await modoElige();
+    await rondasBoteYDorada();
+    await reacciones();
+    await limiteDeSalas();
+    await caducidad();
     console.log('\nE2E OK');
+}
+
+// ---------- Modos y extras ----------
+async function nuevaSalaE2E(config) {
+    const r = await pedir('/api/salas', { method: 'POST', body: JSON.stringify({ intervalo: 150, ...config }) });
+    assert.equal(r.status, 201, JSON.stringify(r.datos));
+    return r.datos;
+}
+
+// Anfitrión y jugadores conectados; devuelve { anfitrion, jugadores: [Cliente con .id] }
+async function conectar(codigo, tokenAnfitrion, apodos) {
+    const anfitrion = new Cliente('anfitrión', codigo);
+    await anfitrion.abrir({ rol: 'anfitrion', token: tokenAnfitrion });
+    await anfitrion.esperar('bienvenida');
+    const jugadores = [];
+    for (const apodo of apodos) {
+        const c = new Cliente(apodo, codigo);
+        await c.abrir({ rol: 'jugador', apodo, semilla: nuevaSemilla(16) });
+        c.id = (await c.esperar('bienvenida')).jugadorId;
+        jugadores.push(c);
+    }
+    return { anfitrion, jugadores };
+}
+
+const cerrarTodos = (...clientes) => clientes.flat().forEach((c) => c.cerrar());
+
+async function modoFila() {
+    const { codigo, tokenAnfitrion } = await nuevaSalaE2E({ tipo: 'fila', precioCarton: 5 });
+    const { anfitrion, jugadores: [ana, beto] } = await conectar(codigo, tokenAnfitrion, ['Ana', 'Beto']);
+    for (const [c, filas] of [[ana, [1, 2]], [beto, [3, 4]]]) {
+        for (const n of filas) c.enviar({ tipo: 'elegirCarton', numero: n });
+    }
+    await anfitrion.esperarEstado((e) => Object.keys(e.ocupados).length === 4, '4 filas vendidas');
+    beto.enviar({ tipo: 'elegirCarton', numero: 16 });
+    await beto.esperar((m) => m.tipo === 'error' && /fila debe/i.test(m.mensaje), 'error por fila 16');
+    anfitrion.enviar({ tipo: 'iniciar' });
+    await ana.esperar('bola', 'primera bola');
+    ana.enviar({ tipo: 'bingo', numero: 1 });
+    await ana.esperar((m) => m.tipo === 'error' && /no hace falta cantar/.test(m.mensaje), 'bingo rechazado en Fila de 5');
+
+    const ganador = await ana.esperar('ganador', 'ganador de la fila', 30000);
+    assert.equal(ganador.modalidad, 'fila5');
+    assert.equal(ganador.ganadores.length, 1, 'las filas no comparten números: un solo ganador');
+    const final = await anfitrion.esperarEstado((e) => e.estado === 'terminada', 'fin de la partida', 10000);
+    const [g] = ganador.ganadores;
+    const salidas = new Set(final.estado.bolas);
+    assert.ok(numerosDeFila(g.carton).every((n) => salidas.has(n)), 'la fila ganadora está completa');
+    assert.equal(g.fichas, 20);
+    // Ninguna otra fila vendida estaba completa antes de la última bola
+    const antes = new Set(final.estado.bolas.slice(0, -1));
+    for (const n of [1, 2, 3, 4]) assert.ok(!numerosDeFila(n).every((x) => antes.has(x)), `la fila ${n} no se completó antes`);
+    cerrarTodos(anfitrion, ana, beto);
+    paso('Fila de 5: premio automático a la primera fila vendida que se completa, sin cantar');
+}
+
+async function modoElige() {
+    const { codigo, tokenAnfitrion } = await nuevaSalaE2E({ tipo: 'elige', precioCarton: 10, cartones: 10 });
+    const { anfitrion, jugadores: [ana, beto] } = await conectar(codigo, tokenAnfitrion, ['Ana', 'Beto']);
+    ana.enviar({ tipo: 'elegirCarton', numeros: [1, 2, 3, 4] });
+    await ana.esperar((m) => m.tipo === 'error' && /exactamente 5/.test(m.mensaje), 'error por 4 números');
+    // La misma jugada para los dos: se completan con la misma bola y el pozo se reparte
+    ana.enviar({ tipo: 'elegirCarton', numeros: [70, 5, 33, 18, 61] });
+    beto.enviar({ tipo: 'elegirCarton', numeros: [5, 18, 33, 61, 70] });
+    const listo = await anfitrion.esperarEstado((e) => Object.keys(e.jugadas).length === 2, '2 jugadas');
+    assert.deepEqual(Object.values(listo.estado.jugadas), [[5, 18, 33, 61, 70], [5, 18, 33, 61, 70]]);
+    anfitrion.enviar({ tipo: 'iniciar' });
+    const ganador = await ana.esperar('ganador', 'ganadores de Elige tus 5', 30000);
+    assert.equal(ganador.modalidad, 'elige5');
+    assert.deepEqual(ganador.ganadores.map((g) => [g.apodo, g.fichas]).sort(), [['Ana', 10], ['Beto', 10]]);
+    cerrarTodos(anfitrion, ana, beto);
+    paso('Elige tus 5: jugadas propias validadas y empate repartido');
+}
+
+async function rondasBoteYDorada() {
+    const { codigo, tokenAnfitrion } = await nuevaSalaE2E({
+        tipo: 'fila', precioCarton: 10, rondasSeguidas: true, bolaDorada: true, botePorcentaje: 20, boteBolas: 75,
+    });
+    const { anfitrion, jugadores: [ana, beto] } = await conectar(codigo, tokenAnfitrion, ['Ana', 'Beto']);
+    ana.enviar({ tipo: 'elegirCarton', numero: 1 });
+    beto.enviar({ tipo: 'elegirCarton', numero: 2 });
+    const lobby = await anfitrion.esperarEstado((e) => Object.keys(e.ocupados).length === 2, '2 filas');
+    assert.equal(lobby.estado.aporteRonda, 4, '20 % de 20 fichas va al bote');
+    assert.equal(lobby.estado.pozo, 16);
+    beto.enviar({ tipo: 'repetir', valor: false });
+    await anfitrion.esperarEstado((e) => e.jugadores.find((j) => j.id === beto.id)?.repetir === false, 'Beto no repite');
+    anfitrion.enviar({ tipo: 'iniciar' });
+
+    const ganador = await ana.esperar('ganador', 'ganador de la ronda 1', 30000);
+    assert.equal(ganador.bote, 4, 'con 75 bolas de margen el bote siempre se entrega');
+    assert.equal(ganador.ganadores[0].bote, 4);
+    const fin = await anfitrion.esperarEstado((e) => e.estado === 'terminada', 'fin de la ronda 1', 10000);
+    const e1 = fin.estado;
+    assert.equal(e1.bote, 0);
+    assert.ok(Number.isInteger(e1.dorada), 'la bola dorada se revela al terminar');
+    assert.notEqual(e1.siguienteRondaEn, null, 'rondas seguidas: la siguiente está programada');
+    const ganadorJugador = e1.jugadores.find((j) => j.id === ganador.ganadores[0].jugadorId);
+    const premio = ganador.ganadores[0].fichas;
+    assert.ok(premio === 16 || premio === 32, 'premio normal o doble por la bola dorada');
+    assert.equal(ganadorJugador.ganado, premio + 4, 'ranking: premio + bote');
+    const verificacion = verificarPartida({
+        compromiso: e1.justo.compromiso, semillaServidor: e1.justo.semillaServidor, semillasClientes: e1.justo.semillasClientes,
+        semillaClientes: e1.justo.semillaClientes, serie: e1.serie, bolas: e1.bolas, dorada: e1.dorada,
+    });
+    assert.ok(verificacion.valida, verificacion.errores.join(' '));
+    if (e1.bolas.indexOf(e1.dorada) !== -1 && e1.bolas.indexOf(e1.dorada) < e1.bolas.length - 1) {
+        assert.equal(e1.premios[0].fichas, 32, 'la bola dorada salió antes del ganador: premio doble');
+    }
+
+    const ronda2 = await anfitrion.esperarEstado((e) => e.estado === 'lobby' && e.ronda === 2, 'lobby de la ronda 2', 10000);
+    assert.deepEqual(ronda2.estado.ocupados, { 1: ana.id }, 'Ana repite su fila; Beto no');
+    assert.notEqual(ronda2.estado.inicioAutoEn, null);
+    await anfitrion.esperarEstado((e) => e.estado === 'jugando' && e.ronda === 2, 'la ronda 2 empieza sola', 10000);
+    anfitrion.enviar({ tipo: 'pausar' });
+    cerrarTodos(anfitrion, ana, beto);
+    paso('rondas seguidas, bote, ranking y bola dorada verificable');
+}
+
+async function reacciones() {
+    const { codigo, tokenAnfitrion } = await nuevaSalaE2E({ tipo: 'fila' });
+    const { anfitrion, jugadores: [ana] } = await conectar(codigo, tokenAnfitrion, ['Ana']);
+    ana.enviar({ tipo: 'reaccion', emoji: '🔥' });
+    ana.enviar({ tipo: 'reaccion', emoji: '👏' }); // demasiado pronto: se descarta
+    const r = await anfitrion.esperar('reaccion', 'reacción en el show');
+    assert.deepEqual([r.emoji, r.apodo], ['🔥', 'Ana']);
+    await dormir(300);
+    assert.ok(!anfitrion.mensajes.some((m) => m.tipo === 'reaccion' && m.emoji === '👏'), 'como mucho una cada 800 ms');
+    ana.enviar({ tipo: 'reaccion', emoji: '💣' });
+    await ana.esperar((m) => m.tipo === 'error' && /Reacción/.test(m.mensaje), 'reacción no válida');
+    anfitrion.enviar({ tipo: 'reaccion', emoji: '🔥' });
+    await anfitrion.esperar((m) => m.tipo === 'error' && /jugadores/.test(m.mensaje), 'el anfitrión no reacciona');
+    cerrarTodos(anfitrion, ana);
+    paso('reacciones: se reenvían al show con el apodo, limitadas y validadas');
+}
+
+async function limiteDeSalas() {
+    const ip = `limite-${IP_PRUEBA}`;
+    const crearDesde = (config) => pedir('/api/salas', { method: 'POST', body: JSON.stringify(config), headers: { 'x-prueba-ip': ip } });
+    for (let i = 0; i < 2; i++) assert.equal((await crearDesde({ cartones: 2 })).status, 400, 'config no válida');
+    for (let i = 0; i < 10; i++) assert.equal((await crearDesde({})).status, 201, `sala ${i + 1} de 10`);
+    const r = await fetch(`${BASE}/api/salas`, { method: 'POST', body: '{}', headers: { 'x-prueba-ip': ip } });
+    assert.equal(r.status, 429);
+    assert.ok(Number(r.headers.get('retry-after')) > 0, 'Retry-After');
+    assert.match((await r.json()).error, /demasiadas salas/);
+    assert.equal((await pedir('/api/salas', { method: 'POST', body: '{}' })).status, 201, 'otra IP sí puede');
+    paso('límite: 10 salas por hora e IP (429 con Retry-After); los formularios con errores no cuentan');
+}
+
+async function caducidad() {
+    const sola = await nuevaSalaE2E({ caducidadMs: 1500 });
+    assert.equal((await pedir(`/api/salas/${sola.codigo}`)).status, 200);
+    const conGente = await nuevaSalaE2E({ caducidadMs: 1500 });
+    const anfitrion = new Cliente('anfitrión', conGente.codigo);
+    await anfitrion.abrir({ rol: 'anfitrion', token: conGente.tokenAnfitrion });
+    await anfitrion.esperar('bienvenida');
+
+    await dormir(3500);
+    const borrada = await pedir(`/api/salas/${sola.codigo}`);
+    assert.equal(borrada.status, 404, 'sin actividad ni nadie conectado: se borra');
+    assert.equal((await pedir(`/api/salas/${conGente.codigo}`)).status, 200, 'con alguien conectado no se borra');
+
+    anfitrion.cerrar();
+    await dormir(4500);
+    assert.equal((await pedir(`/api/salas/${conGente.codigo}`)).status, 404, 'al quedarse vacía también caduca');
+    paso('caducidad: las salas sin actividad se borran; con alguien conectado se aplazan');
 }
 
 let codigoSalida = 0;
