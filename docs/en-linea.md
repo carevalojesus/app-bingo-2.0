@@ -151,6 +151,13 @@ Los intentos con clave incorrecta gastan cupo del limitador de la IP (10 por hor
 Durable Object único (`Registro`): un código anulado deja de servir para crear salas, y los códigos
 generados con `npm run codigo` se registran (origen «terminal») la primera vez que se usan.
 
+**Dominio y entrada al panel**: el Worker responde en `bingo.carevalojesus.com` (dominio propio,
+`routes` en `wrangler.toml`) y también en `bingo-show.<cuenta>.workers.dev`. El panel acepta
+**Cloudflare Access**: con una aplicación de Access sobre `bingo.carevalojesus.com/admin*` y
+`/api/admin/*`, y `ACCESS_EQUIPO` y `ACCESS_AUD` en `[vars]`, el Worker comprueba el JWT de Access
+(`worker/access.js`: firma RS256 con las claves del equipo, AUD, emisor y caducidad) y deja pasar sin
+clave. La clave `ADMIN_CLAVE` sigue sirviendo de respaldo (por ejemplo, desde `workers.dev`).
+
 **Límite de salas** (`worker/limitador.js`): cada IP (`cf-connecting-ip`) puede crear como mucho
 10 salas por hora. Lo lleva un Durable Object `Limitador` por IP, que se borra solo cuando ya no
 quedan creaciones recientes. Solo cuentan las salas creadas (`201`), no las peticiones rechazadas.

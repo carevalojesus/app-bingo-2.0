@@ -3,6 +3,7 @@
 
 import { generarCodigo, codigoValido } from './juego.js';
 import { validarCodigoPro, generarCodigoPro, normalizarCodigoPro } from '../src/codigos.js';
+import { usuarioAccess } from './access.js';
 
 export { Sala } from './sala.js';
 export { Limitador } from './limitador.js';
@@ -94,17 +95,22 @@ async function igualesSeguro(a, b) {
 }
 
 async function admin(request, env, url) {
-    if (!env.ADMIN_CLAVE || env.ADMIN_CLAVE.length < 12) return json({ error: 'El panel de administración no está configurado.' }, 503);
-    const limitador = env.LIMITES.get(env.LIMITES.idFromName(`admin:${ipDe(request, env)}`));
-    if (!(await limitador.consultar()).permitido) return json({ error: 'Demasiados intentos. Espera un rato.' }, 429);
-    const clave = (request.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '');
-    if (!clave || !(await igualesSeguro(clave, env.ADMIN_CLAVE))) {
-        await limitador.apuntar();
-        return json({ error: 'Clave de administración incorrecta.' }, 401);
+    // Entrada con Cloudflare Access (si está configurado) o, de respaldo, con la clave
+    const conAccess = await usuarioAccess(request, env);
+    if (!conAccess) {
+        if (!env.ADMIN_CLAVE || env.ADMIN_CLAVE.length < 12) return json({ error: 'El panel de administración no está configurado.' }, 503);
+        const limitador = env.LIMITES.get(env.LIMITES.idFromName(`admin:${ipDe(request, env)}`));
+        if (!(await limitador.consultar()).permitido) return json({ error: 'Demasiados intentos. Espera un rato.' }, 429);
+        const clave = (request.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '');
+        if (!clave || !(await igualesSeguro(clave, env.ADMIN_CLAVE))) {
+            // Sin clave (p. ej. el panel probando si Access ya dejó pasar) no cuenta como intento fallido
+            if (clave) await limitador.apuntar();
+            return json({ error: clave ? 'Clave de administración incorrecta.' : 'Hace falta entrar.' }, 401);
+        }
     }
     const reg = registro(env);
 
-    if (url.pathname === '/api/admin/resumen' && request.method === 'GET') return json(await reg.resumen());
+    if (url.pathname === '/api/admin/resumen' && request.method === 'GET') return json({ ...(await reg.resumen()), usuario: conAccess });
 
     if (url.pathname === '/api/admin/codigos' && request.method === 'POST') {
         if (!env.CODIGOS_SECRETO) return json({ error: 'Falta la clave de los códigos (CODIGOS_SECRETO).' }, 503);

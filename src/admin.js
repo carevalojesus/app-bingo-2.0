@@ -24,9 +24,10 @@ function avisar(texto) {
 }
 
 async function api(ruta, opciones = {}) {
+    // Con Cloudflare Access no hace falta clave: la cookie de Access viaja sola
     const r = await fetch(ruta, {
         ...opciones,
-        headers: { authorization: `Bearer ${clave}`, 'content-type': 'application/json', ...(opciones.headers || {}) },
+        headers: { ...(clave ? { authorization: `Bearer ${clave}` } : {}), 'content-type': 'application/json', ...(opciones.headers || {}) },
     });
     const cuerpo = await r.json().catch(() => ({}));
     if (r.status === 401) {
@@ -274,6 +275,27 @@ $('tablaCodigos').addEventListener('click', async (e) => {
     }
 });
 
-// Al abrir, si esta pestaña ya tenía la clave, se entra directamente
+// Al abrir: si esta pestaña ya tenía la clave, se entra; si no, se prueba sin clave por si
+// Cloudflare Access ya identificó a quien abre el panel
 const guardada = leerClave();
 if (guardada) entrar(guardada);
+else entrarConAccess();
+
+async function entrarConAccess() {
+    try {
+        const r = await fetch('/api/admin/resumen');
+        if (!r.ok) return;
+        datos = await r.json();
+    } catch {
+        return;
+    }
+    clave = '';
+    $('formEntrar').classList.add('hidden');
+    $('panel').classList.remove('hidden');
+    $('salirBtn').classList.add('hidden'); // con Access se sale cerrando la sesión de Cloudflare
+    if (datos.usuario) avisar(`Entraste con Cloudflare como ${datos.usuario}`);
+    pintarResumen();
+    pintarVisitas();
+    pintarTabla();
+    cargarSalas();
+}
