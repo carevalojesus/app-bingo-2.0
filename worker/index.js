@@ -228,9 +228,19 @@ async function api(request, env, url) {
     return sala(env, codigo).fetch('https://sala/info');
 }
 
+// Páginas pedidas por la dirección antigua (*.workers.dev): al dominio propio, con la misma ruta y
+// parámetros, para que el QR y los enlaces salgan siempre con el dominio bueno. La API no se redirige.
+export function redireccionDominio(url, env) {
+    const dominio = String(env.DOMINIO ?? '').trim();
+    if (!dominio || !url.hostname.endsWith('.workers.dev') || url.pathname.startsWith('/api/')) return null;
+    return Response.redirect(`https://${dominio}${url.pathname}${url.search}`, 301);
+}
+
 export default {
     async fetch(request, env) {
         const url = new URL(request.url);
+        const redireccion = redireccionDominio(url, env);
+        if (redireccion) return redireccion;
         if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
         try {
             return await api(request, env, url);
