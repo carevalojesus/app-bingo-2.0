@@ -22,7 +22,7 @@ binding = "ASSETS"
 # imágenes, scripts y fuentes se sirven directamente
 run_worker_first = [
     "/api/*", "/", "/index*", "/show*", "/jugar*", "/sala*", "/precios*", "/terminos*",
-    "/carton*", "/admin*", "/anfitrion*",
+    "/carton*", "/admin*", "/anfitrion*", "/.well-known/*",
 ]
 
 [[durable_objects.bindings]]

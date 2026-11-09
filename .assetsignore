@@ -17,3 +17,4 @@ tailwind.config.cjs
 wrangler.toml
 wrangler.jsonc
 scripts
+android

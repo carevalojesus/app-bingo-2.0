@@ -236,9 +236,23 @@ export function redireccionDominio(url, env) {
     return Response.redirect(`https://${dominio}${url.pathname}${url.search}`, 301);
 }
 
+// Digital Asset Links: permite que la app de Android abra directamente los enlaces de sala
+// (jugar.html / anfitrion.html). La huella es la del certificado de firma de release (pública).
+export const ASSET_LINKS = [{
+    relation: ['delegate_permission/common.handle_all_urls'],
+    target: {
+        namespace: 'android_app',
+        package_name: 'pe.carevalojesus.bingoshow',
+        sha256_cert_fingerprints: ['9C:6C:79:AB:4D:81:40:E0:E6:7C:1E:71:76:7F:C8:26:EA:2A:FE:35:0F:6C:B4:08:FE:99:13:0A:35:4B:69:FC'],
+    },
+}];
+
 export default {
     async fetch(request, env) {
         const url = new URL(request.url);
+        if (url.pathname === '/.well-known/assetlinks.json') {
+            return new Response(JSON.stringify(ASSET_LINKS), { headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=3600' } });
+        }
         const redireccion = redireccionDominio(url, env);
         if (redireccion) return redireccion;
         if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
