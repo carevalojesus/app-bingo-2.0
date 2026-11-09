@@ -686,6 +686,23 @@ async function administracion() {
     assert.ok(!(await llamar('/api/admin/salas')).datos.salas.some((x) => x.codigo === abierta.codigo));
     dentro.cerrar();
     paso('administración: clave, emitir y registrar códigos, uso por sala, anular/reactivar, bloqueo por intentos y cerrar salas');
+
+    // Contador de visitas: página, procedencia y clics; como mucho 10 por hora desde cada IP
+    const ipVisitas = `visitas-${IP_PRUEBA}`;
+    const visitar = (cuerpo) => fetch(`${BASE}/api/visita`, { method: 'POST', body: JSON.stringify(cuerpo), headers: { 'x-prueba-ip': ipVisitas } });
+    const hoyAntes = (await llamar('/api/admin/resumen')).datos.dias.at(-1).visitas;
+    assert.equal((await visitar({ pagina: 'portada', origen: 'facebook.com' })).status, 204);
+    await visitar({ evento: 'whatsapp' });
+    await visitar({ pagina: 'inventada' }); // no se cuenta
+    for (let i = 0; i < 10; i++) await visitar({ pagina: 'precios' }); // las últimas ya superan el límite
+    const hoy = (await llamar('/api/admin/resumen')).datos.dias.at(-1).visitas;
+    assert.equal((hoy.paginas.portada ?? 0) - (hoyAntes.paginas.portada ?? 0), 1);
+    assert.equal((hoy.origenes['facebook.com'] ?? 0) - (hoyAntes.origenes['facebook.com'] ?? 0), 1);
+    assert.equal((hoy.eventos.whatsapp ?? 0) - (hoyAntes.eventos.whatsapp ?? 0), 1);
+    assert.equal((hoy.paginas.precios ?? 0) - (hoyAntes.paginas.precios ?? 0), 8, '10 por hora: 2 + 8 de precios');
+    assert.equal(hoy.paginas.inventada, undefined);
+    for (const ruta of ['/favicon.svg', '/favicon.ico', '/img/icono-180.png']) assert.equal((await fetch(`${BASE}${ruta}`)).status, 200, ruta);
+    paso('visitas: portada, precios, procedencia y clics contados, con límite por IP; iconos publicados');
 }
 
 async function admisionYVinculo() {

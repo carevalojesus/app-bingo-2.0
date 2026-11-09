@@ -60,6 +60,23 @@ function pintarResumen() {
     $('kMesDetalle').textContent = `${mes.pro} Pro · ${mes.gratis} gratis`;
 }
 
+function pintarVisitas() {
+    const dias = datos.dias || [];
+    const suma = (lista, f) => lista.reduce((t, d) => t + f(d.visitas ?? { paginas: {}, eventos: {}, origenes: {} }), 0);
+    const paginas = (v) => Object.values(v.paginas || {}).reduce((a, b) => a + b, 0);
+    $('vHoy').textContent = suma(dias.slice(-1), paginas);
+    $('vMes').textContent = suma(dias, paginas);
+    $('vMesDetalle').textContent = `${suma(dias, (v) => v.paginas?.portada ?? 0)} portada · ${suma(dias, (v) => v.paginas?.precios ?? 0)} precios`;
+    $('vWhatsapp').textContent = suma(dias, (v) => v.eventos?.whatsapp ?? 0);
+    $('vCrear').textContent = suma(dias, (v) => v.eventos?.crear ?? 0);
+    const origenes = {};
+    for (const d of dias) for (const [o, n] of Object.entries(d.visitas?.origenes ?? {})) origenes[o] = (origenes[o] ?? 0) + n;
+    const top = Object.entries(origenes).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    $('vOrigenes').innerHTML = top.length
+        ? top.map(([o, n]) => `<li class="rounded-full border-2 border-tinta bg-papel px-3 py-0.5">${esc(o === 'directo' ? 'Directo / WhatsApp' : o)} <b>${n}</b></li>`).join('')
+        : '<li class="text-tinta/60">Aún no hay visitas.</li>';
+}
+
 function pintarTabla() {
     const filtro = $('filtro').value;
     const texto = $('buscar').value.trim().toLowerCase();
@@ -90,6 +107,7 @@ async function cargar() {
     try {
         datos = await api('/api/admin/resumen');
         pintarResumen();
+        pintarVisitas();
         pintarTabla();
     } catch (error) {
         avisar(error.message);
@@ -160,6 +178,7 @@ async function entrar(valor) {
     $('panel').classList.remove('hidden');
     $('salirBtn').classList.remove('hidden');
     pintarResumen();
+    pintarVisitas();
     pintarTabla();
     cargarSalas();
 }

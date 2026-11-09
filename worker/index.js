@@ -164,8 +164,32 @@ async function admin(request, env, url) {
     return json({ error: 'Ruta no encontrada.' }, 404);
 }
 
+// Contador de visitas de la portada y precios (lo ve el panel de administración). Sin cookies.
+// Como mucho 10 por hora desde cada IP, para que no se pueda inflar.
+const PAGINAS_CONTADAS = ['portada', 'precios'];
+const EVENTOS_CONTADOS = ['whatsapp', 'crear'];
+
+async function visita(request, env) {
+    if (request.method !== 'POST') return json({ error: 'Método no permitido.' }, 405);
+    const texto = await request.text();
+    if (texto.length > 500) return new Response(null, { status: 204 });
+    let datos = {};
+    try { datos = JSON.parse(texto); } catch { return new Response(null, { status: 204 }); }
+    const pagina = PAGINAS_CONTADAS.includes(datos.pagina) ? datos.pagina : null;
+    const evento = EVENTOS_CONTADOS.includes(datos.evento) ? datos.evento : null;
+    if (!pagina && !evento) return new Response(null, { status: 204 });
+    const origen = typeof datos.origen === 'string' && /^[a-z0-9.-]{3,60}$/.test(datos.origen) ? datos.origen : (pagina ? 'directo' : null);
+    const limitador = env.LIMITES.get(env.LIMITES.idFromName(`visita:${ipDe(request, env)}`));
+    if ((await limitador.consultar()).permitido) {
+        await limitador.apuntar();
+        await registro(env).anotarVisita({ pagina, evento, origen: pagina ? origen : null });
+    }
+    return new Response(null, { status: 204 });
+}
+
 async function api(request, env, url) {
     if (url.pathname.startsWith('/api/admin/')) return admin(request, env, url);
+    if (url.pathname === '/api/visita') return visita(request, env);
 
     if (/^\/api\/salas\/?$/.test(url.pathname)) {
         if (request.method !== 'POST') return json({ error: 'Método no permitido.' }, 405);

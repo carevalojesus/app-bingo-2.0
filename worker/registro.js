@@ -4,6 +4,7 @@
 // Claves:  c:<código normalizado> → { codigo, tipo, hasta, emitido, nota, cliente, importe, origen, revocado, salas: [] }
 //          d:<AAAA-MM-DD>         → { gratis, pro }  (salas creadas ese día, UTC)
 //          s:<código de sala>     → { codigo, nombre, pro, creada }  (salas que existen; se quitan al cerrarse o caducar)
+//          v:<AAAA-MM-DD>         → { paginas: { portada, precios }, eventos: { whatsapp, crear }, origenes: { dominio: n } }
 
 import { DurableObject } from 'cloudflare:workers';
 
@@ -52,6 +53,18 @@ export class Registro extends DurableObject {
         await this.ctx.storage.put(clave, registro);
     }
 
+    // Visita a la portada o a precios (o un clic en WhatsApp / Crear sala). Sin cookies ni datos personales.
+    async anotarVisita({ pagina = null, evento = null, origen = null }) {
+        const clave = `v:${dia(Date.now())}`;
+        const v = (await this.ctx.storage.get(clave)) ?? { paginas: {}, eventos: {}, origenes: {} };
+        if (pagina) v.paginas[pagina] = (v.paginas[pagina] ?? 0) + 1;
+        if (evento) v.eventos[evento] = (v.eventos[evento] ?? 0) + 1;
+        if (origen && (v.origenes[origen] !== undefined || Object.keys(v.origenes).length < 50)) {
+            v.origenes[origen] = (v.origenes[origen] ?? 0) + 1;
+        }
+        await this.ctx.storage.put(clave, v);
+    }
+
     async quitarSala(sala) {
         await this.ctx.storage.delete(`s:${sala}`);
     }
@@ -67,7 +80,11 @@ export class Registro extends DurableObject {
         const dias = [];
         for (let i = DIAS_ESTADISTICAS - 1; i >= 0; i--) {
             const fecha = dia(hoy - i * 864e5);
-            dias.push({ fecha, ...((await this.ctx.storage.get(`d:${fecha}`)) ?? { gratis: 0, pro: 0 }) });
+            dias.push({
+                fecha,
+                ...((await this.ctx.storage.get(`d:${fecha}`)) ?? { gratis: 0, pro: 0 }),
+                visitas: (await this.ctx.storage.get(`v:${fecha}`)) ?? { paginas: {}, eventos: {}, origenes: {} },
+            });
         }
         return { codigos, dias };
     }

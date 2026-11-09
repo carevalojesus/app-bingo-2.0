@@ -6,6 +6,9 @@
     <meta name="robots" content="noindex, nofollow">
     <title>Administración · Bingo Show</title>
     <meta name="theme-color" content="#1a0d36">
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="favicon.ico" sizes="32x32">
+    <link rel="apple-touch-icon" href="img/icono-180.png">
     <link rel="stylesheet" href="dist/styles.css">
 </head>
 <body class="min-h-screen bg-escenario font-ui text-tinta antialiased">
@@ -39,6 +42,19 @@
             <div class="carta p-4"><p class="etiqueta text-tinta/60">Códigos activos</p><p id="kActivos" class="font-display text-3xl">—</p><p id="kActivosDetalle" class="text-xs font-bold text-tinta/60"></p></div>
             <div class="carta p-4"><p class="etiqueta text-tinta/60">Salas hoy</p><p id="kHoy" class="font-display text-3xl">—</p><p id="kHoyDetalle" class="text-xs font-bold text-tinta/60"></p></div>
             <div class="carta p-4"><p class="etiqueta text-tinta/60">Salas en 30 días</p><p id="kMes" class="font-display text-3xl">—</p><p id="kMesDetalle" class="text-xs font-bold text-tinta/60"></p></div>
+        </section>
+
+        <section class="carta mt-5 p-5" aria-labelledby="tituloVisitas">
+            <h2 id="tituloVisitas" class="font-display text-2xl">Visitas</h2>
+            <p class="text-xs font-bold text-tinta/60">Portada y precios, sin cookies. Como mucho 10 por hora desde cada conexión.</p>
+            <div class="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <div class="rounded-xl border-[2.5px] border-tinta bg-white p-3"><p class="etiqueta text-tinta/60">Hoy</p><p id="vHoy" class="font-display text-2xl">—</p></div>
+                <div class="rounded-xl border-[2.5px] border-tinta bg-white p-3"><p class="etiqueta text-tinta/60">30 días</p><p id="vMes" class="font-display text-2xl">—</p><p id="vMesDetalle" class="text-xs font-bold text-tinta/60"></p></div>
+                <div class="rounded-xl border-[2.5px] border-tinta bg-white p-3"><p class="etiqueta text-tinta/60">Clics en WhatsApp</p><p id="vWhatsapp" class="font-display text-2xl">—</p><p class="text-xs font-bold text-tinta/60">30 días</p></div>
+                <div class="rounded-xl border-[2.5px] border-tinta bg-white p-3"><p class="etiqueta text-tinta/60">Clics en «Crear sala»</p><p id="vCrear" class="font-display text-2xl">—</p><p class="text-xs font-bold text-tinta/60">30 días</p></div>
+            </div>
+            <p class="etiqueta mt-4">De dónde llegan (30 días)</p>
+            <ul id="vOrigenes" class="mt-2 flex flex-wrap gap-2 text-sm font-bold"></ul>
         </section>
 
         <div class="mt-5 grid gap-5 lg:grid-cols-[360px_1fr] lg:items-start">

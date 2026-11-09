@@ -8,12 +8,22 @@
     <meta name="theme-color" content="#1a0d36">
     <meta property="og:title" content="Bingo Show · El bingo de tu evento, en la pantalla grande">
     <meta property="og:description" content="Bombo 3D en la pantalla grande y cada invitado juega desde su móvil. Gratis hasta 15 jugadores.">
-    <meta property="og:image" content="img/show-partida.jpg">
+    <meta property="og:image" content="https://bingo-show.carevalojesus.workers.dev/img/show-partida.jpg">
+    <meta property="og:image:width" content="1568">
+    <meta property="og:image:height" content="738">
+    <meta property="og:image:alt" content="El show de Bingo Show proyectado: bombo dorado y la bola O-68 saliendo">
+    <meta property="og:url" content="https://bingo-show.carevalojesus.workers.dev/">
+    <meta property="og:site_name" content="Bingo Show">
+    <meta property="og:locale" content="es_PE">
     <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary_large_image">
     <script>
         // Enlaces antiguos de salas (index.html?sala=CODIGO): el show está ahora en show.html
         if (new URLSearchParams(location.search).has('sala')) location.replace('show.html' + location.search + location.hash);
     </script>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="favicon.ico" sizes="32x32">
+    <link rel="apple-touch-icon" href="img/icono-180.png">
     <link rel="stylesheet" href="dist/styles.css">
 </head>
 <body class="min-h-screen overflow-x-hidden bg-escenario font-ui text-tinta antialiased">
@@ -32,7 +42,7 @@
     <nav class="flex items-center gap-2 sm:gap-4" aria-label="Principal">
         <a href="precios.html" class="hidden font-ui text-sm font-black uppercase tracking-wide text-crema/80 hover:text-crema sm:inline">Precios</a>
         <a href="jugar.html" class="hidden font-ui text-sm font-black uppercase tracking-wide text-crema/80 hover:text-crema sm:inline">Jugar</a>
-        <a href="sala.html" class="boton h-11 bg-girasol px-4 text-sm">Crear sala</a>
+        <a href="sala.html" data-evento="crear" class="boton h-11 bg-girasol px-4 text-sm">Crear sala</a>
     </nav>
 </header>
 
@@ -48,7 +58,7 @@
                 Proyecta un show con bombo 3D, luces y voz que canta las bolas. Cada invitado juega desde su móvil escaneando un QR: sin instalar nada y sin cuentas.
             </p>
             <div class="mt-7 flex flex-wrap gap-3">
-                <a href="sala.html" class="boton h-14 bg-girasol px-6 font-display text-xl normal-case">Crear sala gratis</a>
+                <a href="sala.html" data-evento="crear" class="boton h-14 bg-girasol px-6 font-display text-xl normal-case">Crear sala gratis</a>
                 <a href="show.html" class="boton h-14 bg-crema px-6 text-sm">Ver el show</a>
             </div>
             <ul class="mt-6 flex flex-wrap gap-x-5 gap-y-2 font-ui text-sm font-black text-crema/75">
@@ -190,8 +200,8 @@
             <h2 class="font-display text-3xl leading-tight sm:text-4xl">¿Organizas un evento?</h2>
             <p class="mx-auto mt-3 max-w-xl text-base font-bold">Prueba gratis hoy mismo, o escríbenos y te ayudamos a preparar el bingo de tu evento.</p>
             <div class="mt-6 flex flex-wrap justify-center gap-3">
-                <a href="sala.html" class="boton h-14 bg-tinta px-6 font-display text-xl normal-case text-crema">Crear sala gratis</a>
-                <a href="https://wa.me/51933240664?text=Hola%2C%20quiero%20informaci%C3%B3n%20de%20Bingo%20Show%20para%20mi%20evento." target="_blank" rel="noopener" class="boton h-14 bg-menta px-6 text-sm">Escríbenos por WhatsApp</a>
+                <a href="sala.html" data-evento="crear" class="boton h-14 bg-tinta px-6 font-display text-xl normal-case text-crema">Crear sala gratis</a>
+                <a href="https://wa.me/51933240664?text=Hola%2C%20quiero%20informaci%C3%B3n%20de%20Bingo%20Show%20para%20mi%20evento." target="_blank" rel="noopener" data-evento="whatsapp" class="boton h-14 bg-menta px-6 text-sm">Escríbenos por WhatsApp</a>
             </div>
         </div>
     </section>
@@ -209,5 +219,29 @@
         </nav>
     </div>
 </footer>
+<script>
+    // Contador de visitas propio (sin cookies): página, de dónde viene y clics en WhatsApp / Crear sala
+    (function () {
+        if (!/^https?:$/.test(location.protocol)) return;
+        var enviar = function (datos) {
+            var cuerpo = JSON.stringify(datos);
+            try { if (navigator.sendBeacon && navigator.sendBeacon('/api/visita', cuerpo)) return; } catch (e) { /* */ }
+            try { fetch('/api/visita', { method: 'POST', body: cuerpo, keepalive: true }); } catch (e) { /* */ }
+        };
+        var origen = '';
+        try {
+            var h = new URL(document.referrer).hostname;
+            if (h && h !== location.hostname) origen = h.replace(/^www\./, '');
+        } catch (e) { /* sin referente */ }
+        var utm = new URLSearchParams(location.search).get('utm_source');
+        if (utm) origen = utm;
+        origen = origen.toLowerCase().replace(/[^a-z0-9.-]/g, '').slice(0, 60);
+        enviar({ pagina: 'portada', origen: origen || undefined });
+        document.addEventListener('click', function (e) {
+            var a = e.target.closest && e.target.closest('[data-evento]');
+            if (a) enviar({ evento: a.dataset.evento });
+        });
+    })();
+</script>
 </body>
 </html>
