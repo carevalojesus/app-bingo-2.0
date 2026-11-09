@@ -98,7 +98,10 @@ async function admin(request, env, url) {
     // Entrada con Cloudflare Access (si está configurado) o, de respaldo, con la clave
     const conAccess = await usuarioAccess(request, env);
     if (!conAccess) {
-        if (!env.ADMIN_CLAVE || env.ADMIN_CLAVE.length < 12) return json({ error: 'El panel de administración no está configurado.' }, 503);
+        // En producción no hay clave: solo se entra con Cloudflare Access (la clave queda para desarrollo local)
+        if (!env.ADMIN_CLAVE || env.ADMIN_CLAVE.length < 12) {
+            return json({ error: 'Entra en https://bingo.carevalojesus.com/admin.html con tu cuenta de Cloudflare.' }, 401);
+        }
         const limitador = env.LIMITES.get(env.LIMITES.idFromName(`admin:${ipDe(request, env)}`));
         if (!(await limitador.consultar()).permitido) return json({ error: 'Demasiados intentos. Espera un rato.' }, 429);
         const clave = (request.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '');
