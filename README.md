@@ -7,7 +7,7 @@ Hecho con **Three.js** (escena 3D), **GSAP** (animaciones) y **Tailwind CSS** (i
 
 ## Cómo usarlo
 
-Abre `index.html` en el navegador (con doble clic funciona; no necesita internet ni servidor).
+Abre `show.html` en el navegador (con doble clic funciona; no necesita internet ni servidor). `index.html` es la portada del producto.
 
 | Acción | Botón | Tecla |
 |---|---|---|
@@ -39,12 +39,12 @@ Guarda el código de serie: con él se pueden verificar los cartones en cualquie
 Además del show sin conexión, Bingo Show puede organizar partidas con los móviles de los jugadores.
 Se juega con **fichas virtuales** (no hay dinero) y sin cuentas: basta un código de sala y un apodo.
 Necesita el servidor (Cloudflare Workers + Durable Objects, carpeta `worker/`); con doble clic sobre
-`index.html` solo funciona el modo sin conexión.
+`show.html` solo funciona el modo sin conexión.
 
 1. **Crear la sala** (anfitrión): botón **En línea** del show o `sala.html`. Se eligen los cartones a
    la venta, su precio en fichas, las fichas con las que entra cada jugador, la velocidad y los premios
    (línea, 4 esquinas y/o cartón lleno, con su porcentaje del pozo). Al crearla se abre el show en
-   modo en línea (`index.html?sala=CODIGO`). La llave de anfitrión se guarda en ese navegador: desde
+   modo en línea (`show.html?sala=CODIGO`; los enlaces antiguos `index.html?sala=` redirigen). La llave de anfitrión se guarda en ese navegador: desde
    otro dispositivo no se puede manejar la sala.
 2. **Unirse** (jugadores): con el móvil en `jugar.html?sala=CODIGO` (el show muestra el código y el
    enlace para copiar) o en `jugar.html` escribiendo el código. Cada jugador pone su apodo, recibe sus
@@ -124,7 +124,8 @@ npm test        # pruebas de cartones, partida verificable y reglas de la sala e
 
 | Archivo | Contenido |
 |---|---|
-| `index.html` | Estructura de la interfaz |
+| `index.html` | Portada (presentación del producto, capturas en `img/`) |
+| `show.html` | Estructura de la interfaz del show |
 | `src/main.js` | Lógica del juego, pizarra, historial, modales y atajos |
 | `src/escenario.js` | Escena 3D: bombo, física de las bolas, luces, focos, chispas y cámara |
 | `src/texturas.js` | Texturas de las bolas (el número pintado sobre la esfera) |

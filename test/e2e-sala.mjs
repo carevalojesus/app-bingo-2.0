@@ -195,13 +195,13 @@ async function principal() {
     await prepararServidor();
 
     // Archivos estáticos: lo público sí, el código fuente no
-    for (const ruta of ['/', '/index.html', '/dist/app.js', '/carton.html', '/fonts/Bungee/bungee-latin-400-normal.woff2']) {
+    for (const ruta of ['/', '/index.html', '/show.html', '/dist/app.js', '/carton.html', '/fonts/Bungee/bungee-latin-400-normal.woff2']) {
         assert.equal((await fetch(`${BASE}${ruta}`)).status, 200, `${ruta} debería servirse`);
     }
     for (const ruta of ['/package.json', '/src/main.js', '/src/carton.js', '/worker/index.js', '/wrangler.toml', '/.git/HEAD', '/test/e2e-sala.mjs']) {
         assert.equal((await fetch(`${BASE}${ruta}`)).status, 404, `${ruta} NO debería servirse`);
     }
-    paso('assets: index.html, dist/ y fonts/ se sirven; package.json, src/, worker/ y .git no');
+    paso('assets: portada, show, dist/ y fonts/ se sirven; package.json, src/, worker/ y .git no');
 
     // Crear sala
     const invalida = await pedir('/api/salas', { method: 'POST', body: JSON.stringify({ cartones: 2 }) });

@@ -285,7 +285,7 @@ $('formSala').addEventListener('submit', async (e) => {
         } catch {
             throw new Error('El navegador no deja guardar datos (¿modo privado?): sin eso no podrías volver a tu sala.');
         }
-        location.href = `index.html?sala=${encodeURIComponent(codigo)}`;
+        location.href = `show.html?sala=${encodeURIComponent(codigo)}`;
     } catch (error) {
         mostrarErrores([error instanceof TypeError ? 'No se pudo contactar con el servidor. Revisa la conexión e inténtalo otra vez.' : error.message]);
         boton.disabled = false;
@@ -315,7 +315,7 @@ if (guardadas.length) {
     const lista = $('salasGuardadas');
     lista.classList.replace('hidden', 'flex');
     lista.innerHTML = guardadas.map((c) =>
-        `<li><a href="index.html?sala=${c}" class="boton h-9 bg-crema px-3 font-display text-sm normal-case tracking-wider">${c}</a></li>`).join('');
+        `<li><a href="show.html?sala=${c}" class="boton h-9 bg-crema px-3 font-display text-sm normal-case tracking-wider">${c}</a></li>`).join('');
 }
 
 $('codigoAbrir').addEventListener('input', (e) => { e.target.value = normalizarCodigo(e.target.value); });
@@ -328,7 +328,7 @@ $('formAbrir').addEventListener('submit', (e) => {
     else if (!tieneToken(codigo)) texto = 'Esa sala no se creó en este dispositivo. Si quieres jugar, únete desde el móvil.';
     error.textContent = texto;
     error.classList.toggle('hidden', !texto);
-    if (!texto) location.href = `index.html?sala=${codigo}`;
+    if (!texto) location.href = `show.html?sala=${codigo}`;
 });
 
 pintarPremios();

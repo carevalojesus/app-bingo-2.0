@@ -2,324 +2,212 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <title>Bingo Show</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Bingo Show · El bingo de tu evento, en la pantalla grande</title>
+    <meta name="description" content="Proyecta un show de bingo con bombo 3D y que cada invitado juegue desde su móvil escaneando un QR. Gratis hasta 15 jugadores, sin instalar nada.">
     <meta name="theme-color" content="#1a0d36">
+    <meta property="og:title" content="Bingo Show · El bingo de tu evento, en la pantalla grande">
+    <meta property="og:description" content="Bombo 3D en la pantalla grande y cada invitado juega desde su móvil. Gratis hasta 15 jugadores.">
+    <meta property="og:image" content="img/show-partida.jpg">
+    <meta property="og:type" content="website">
+    <script>
+        // Enlaces antiguos de salas (index.html?sala=CODIGO): el show está ahora en show.html
+        if (new URLSearchParams(location.search).has('sala')) location.replace('show.html' + location.search + location.hash);
+    </script>
     <link rel="stylesheet" href="dist/styles.css">
 </head>
-<body class="h-[100dvh] overflow-hidden bg-escenario font-ui text-tinta antialiased">
+<body class="min-h-screen overflow-x-hidden bg-escenario font-ui text-tinta antialiased">
 
-<!-- Escenario 3D (Three.js) -->
-<canvas id="escena" class="fixed inset-0 h-full w-full" aria-hidden="true"></canvas>
-
-<!-- Todo lo que tiembla con los golpes -->
-<div id="mundo" class="pointer-events-none fixed inset-0">
-
-    <!-- Interfaz sobre el escenario -->
-    <div id="ui" class="absolute inset-0 flex flex-col justify-between p-3 sm:p-6 lg:right-[424px]">
-
-        <header class="flex items-start justify-between gap-2">
-            <div class="pointer-events-auto">
-                <div class="flex items-center gap-3">
-                <h1 class="flex gap-1 sm:gap-1.5" aria-label="Bingo Show">
-                    <span class="logo-ficha bg-tomate" data-rot="-6">B</span>
-                    <span class="logo-ficha bg-girasol" data-rot="4">I</span>
-                    <span class="logo-ficha bg-menta" data-rot="-3">N</span>
-                    <span class="logo-ficha bg-cobalto text-crema" data-rot="6">G</span>
-                    <span class="logo-ficha bg-fucsia" data-rot="-5">O</span>
-                </h1>
-                <img id="marcaLogo" alt="" class="hidden h-12 max-w-[9rem] rounded-xl border-[3px] border-tinta bg-white object-contain p-1 shadow-duro-sm sm:h-16">
-                </div>
-                <div class="mt-2 flex items-center gap-2 sm:mt-3">
-                    <span id="enVivo" class="inline-flex items-center gap-1.5 rounded-full border-[2.5px] border-tinta bg-tomate px-2.5 py-0.5 font-ui text-[10px] font-black uppercase tracking-widest text-crema shadow-duro-sm sm:text-[11px]">
-                        <span class="h-2 w-2 animate-pulse rounded-full bg-crema"></span>En vivo
-                    </span>
-                    <span id="conexion" class="conexion hidden" data-estado="conectando" role="status" aria-live="polite">
-                        <span class="conexion-punto"></span><span id="conexionTexto">Conectando…</span>
-                    </span>
-                    <span id="lema" class="hidden font-display text-sm text-crema/70 sm:inline">El show del sorteo</span>
-                </div>
-            </div>
-
-            <div id="stats" class="pointer-events-auto flex flex-col items-end gap-2 sm:flex-row sm:items-start">
-                <!-- Modo en línea: sala, premios y pozo -->
-                <div id="infoEnLinea" class="info-en-linea carta hidden px-3 py-2 sm:px-4" aria-live="polite">
-                    <div class="flex items-baseline justify-between gap-3 whitespace-nowrap">
-                        <p class="etiqueta text-tinta/60">Sala <span id="infoCodigo" class="font-display text-sm tracking-wider text-tinta">——</span></p>
-                        <p class="etiqueta text-tinta/60"><span id="infoJugadores" class="text-tinta">0</span></p>
-                    </div>
-                    <ol id="infoPremios" class="mt-1.5 flex flex-col gap-1"></ol>
-                    <p class="etiqueta mt-1.5 text-tinta/60">Pozo <span id="infoPozo" class="font-display text-sm text-tinta">0</span> fichas</p>
-                </div>
-                <div class="carta flex divide-x-[3px] divide-tinta overflow-hidden">
-                    <div class="px-2 py-1 sm:px-4 sm:py-2">
-                        <p class="etiqueta text-tinta/60">Bolas</p>
-                        <p class="font-display text-base leading-tight sm:text-2xl"><span id="contadorBolas">0</span><span class="text-xs text-tinta/40 sm:text-sm">/75</span></p>
-                    </div>
-                    <div class="px-2 py-1 sm:px-4 sm:py-2">
-                        <p class="etiqueta text-tinta/60">Tiempo</p>
-                        <p id="tiempo" class="font-ui text-base font-black leading-tight tabular-nums sm:text-2xl">00:00</p>
-                    </div>
-                </div>
-                <div class="flex gap-2">
-                    <a id="enLineaBtn" href="sala.html" class="boton h-10 shrink-0 bg-menta px-2.5 text-[11px] sm:h-14 sm:px-3 sm:text-xs" title="Crear una sala para jugar en línea con móviles">
-                        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>
-                        <span class="hidden sm:inline">En línea</span>
-                    </a>
-                    <a id="cartonesBtn" href="carton.html" target="_blank" class="boton h-10 w-10 shrink-0 bg-crema sm:h-14 sm:w-14" aria-label="Imprimir cartones (se abre en otra pestaña)" title="Imprimir cartones">
-                        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"/><path d="M3 9h18M9 9v12M15 9v12M3 15h18"/></svg>
-                    </a>
-                    <button id="vozBtn" class="boton h-10 w-10 shrink-0 bg-crema text-lg sm:h-14 sm:w-14" aria-label="Voz del narrador" title="Voz del narrador">🗣</button>
-                    <button id="sonidoBtn" class="boton h-10 w-10 shrink-0 bg-crema sm:h-14 sm:w-14" aria-label="Sonido: abrir controles de volumen" title="Sonido y volumen">
-                        <svg id="iconoSonidoOn" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></svg>
-                        <svg id="iconoSonidoOff" class="hidden h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z" fill="currentColor"/><path d="m23 9-6 6"/><path d="m17 9 6 6"/></svg>
-                    </button>
-                </div>
-            </div>
-        </header>
-
-        <div class="flex flex-col items-stretch gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <!-- Bola actual + historial -->
-            <section id="actual" class="pointer-events-auto flex items-center gap-3" aria-label="Bola actual">
-                <div class="carta flex items-center gap-3 p-2 pr-4">
-                    <div id="fichaActual" class="ficha h-14 w-14 text-sm sm:h-16 sm:w-16" style="--c:#3b2a6e">
-                        <span class="ficha-centro">?</span>
-                    </div>
-                    <div>
-                        <p class="etiqueta text-tinta/60">Bola actual</p>
-                        <p id="textoActual" class="font-display text-2xl leading-none sm:text-3xl" aria-live="polite">—</p>
-                    </div>
-                </div>
-                <ol id="historial" class="flex items-center gap-1.5 overflow-hidden" aria-label="Bolas anteriores"></ol>
-            </section>
-
-            <!-- Controles -->
-            <nav id="controles" class="pointer-events-auto flex items-center justify-center gap-2 sm:gap-3" aria-label="Controles">
-                <button id="resetBtn" class="boton h-11 w-11 bg-crema sm:h-12 sm:w-12" aria-label="Reiniciar partida" title="Reiniciar (R)">
-                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
-                </button>
-                <div class="relative mx-1">
-                    <svg class="pointer-events-none absolute -inset-[8px] h-[calc(100%+16px)] w-[calc(100%+16px)] -rotate-90" viewBox="0 0 100 100" aria-hidden="true">
-                        <circle cx="50" cy="50" r="46" fill="none" stroke="#fff3df" stroke-opacity="0.2" stroke-width="6"/>
-                        <circle id="anillo" cx="50" cy="50" r="46" fill="none" stroke="#ffc43d" stroke-width="6" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
-                    </svg>
-                    <button id="playBtn" class="boton h-14 w-14 rounded-full bg-girasol shadow-[0_4px_0_0_#14112b] hover:translate-x-0 hover:shadow-[0_6px_0_0_#14112b] active:translate-x-0 active:translate-y-[4px] active:shadow-none sm:h-16 sm:w-16" aria-label="Iniciar" title="Iniciar / pausar (Espacio)">
-                        <svg id="iconoPlay" class="h-7 w-7" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></svg>
-                        <svg id="iconoPausa" class="hidden h-7 w-7" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="4" width="5" height="16" rx="1.5"/><rect x="14" y="4" width="5" height="16" rx="1.5"/></svg>
-                    </button>
-                </div>
-                <button id="bingoBtn" class="boton h-12 bg-tomate px-4 font-display text-lg normal-case text-crema sm:h-14 sm:px-6 sm:text-2xl" title="¡Bingo! (B)">¡Bingo!</button>
-                <button id="velocidadBtn" class="boton h-11 min-w-[3.25rem] bg-crema px-2 text-sm sm:h-12 sm:min-w-[3.75rem]" aria-label="Velocidad: una bola cada 8 segundos" title="Velocidad">8s</button>
-                <button id="pizarraBtn" class="boton h-11 w-11 bg-menta lg:hidden" aria-label="Ver pizarra" aria-expanded="false" aria-controls="pizarra">
-                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
-                </button>
-            </nav>
+<header class="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 pt-5 sm:px-6">
+    <a href="index.html" class="flex items-center gap-2" aria-label="Bingo Show, inicio">
+        <div class="flex gap-1" aria-hidden="true">
+            <span class="logo-ficha bg-tomate" style="transform:rotate(-6deg)">B</span>
+            <span class="logo-ficha bg-girasol" style="transform:rotate(4deg)">I</span>
+            <span class="logo-ficha bg-menta" style="transform:rotate(-3deg)">N</span>
+            <span class="logo-ficha bg-cobalto text-crema" style="transform:rotate(6deg)">G</span>
+            <span class="logo-ficha bg-fucsia" style="transform:rotate(-5deg)">O</span>
         </div>
-    </div>
+        <span class="ml-1 hidden font-display text-xl text-crema sm:inline">Show</span>
+    </a>
+    <nav class="flex items-center gap-2 sm:gap-4" aria-label="Principal">
+        <a href="precios.html" class="hidden font-ui text-sm font-black uppercase tracking-wide text-crema/80 hover:text-crema sm:inline">Precios</a>
+        <a href="jugar.html" class="hidden font-ui text-sm font-black uppercase tracking-wide text-crema/80 hover:text-crema sm:inline">Jugar</a>
+        <a href="sala.html" class="boton h-11 bg-girasol px-4 text-sm">Crear sala</a>
+    </nav>
+</header>
 
-    <!-- Fondo oscuro de la pizarra en móvil -->
-    <div id="pizarraFondo" class="pointer-events-auto fixed inset-0 z-[15] hidden bg-escenario/60 lg:hidden"></div>
-
-    <!-- Pizarra -->
-    <aside id="pizarra" class="pizarra carta pointer-events-auto fixed inset-x-2 bottom-2 z-20 flex h-[80dvh] flex-col p-3 sm:inset-x-6 sm:p-4 lg:inset-x-auto lg:bottom-6 lg:right-6 lg:top-6 lg:h-auto lg:w-[392px]" aria-label="Pizarra de números">
-        <div class="mb-3 flex items-center justify-between gap-3">
-            <div>
-                <h2 class="font-display text-xl leading-none sm:text-2xl">Pizarra</h2>
-                <p class="etiqueta mt-1 text-tinta/50"><span id="pizarraCuenta">0</span> de 75 cantadas</p>
+<main>
+    <!-- Portada -->
+    <section class="mx-auto grid max-w-6xl items-center gap-10 px-4 pb-16 pt-10 sm:px-6 lg:grid-cols-[1fr_1.15fr] lg:pt-16">
+        <div>
+            <p class="inline-flex items-center gap-2 rounded-full border-[2.5px] border-tinta bg-tomate px-3 py-1 font-ui text-xs font-black uppercase tracking-widest text-crema shadow-duro-sm">
+                <span class="h-2 w-2 animate-pulse rounded-full bg-crema" aria-hidden="true"></span>En vivo en tu evento
+            </p>
+            <h1 class="mt-5 font-display text-4xl leading-[1.05] text-crema sm:text-6xl">El bingo de tu evento, en la pantalla grande</h1>
+            <p class="mt-5 max-w-xl text-lg font-bold text-crema/80">
+                Proyecta un show con bombo 3D, luces y voz que canta las bolas. Cada invitado juega desde su móvil escaneando un QR: sin instalar nada y sin cuentas.
+            </p>
+            <div class="mt-7 flex flex-wrap gap-3">
+                <a href="sala.html" class="boton h-14 bg-girasol px-6 font-display text-xl normal-case">Crear sala gratis</a>
+                <a href="show.html" class="boton h-14 bg-crema px-6 text-sm">Ver el show</a>
             </div>
-            <div class="h-3.5 flex-1 overflow-hidden rounded-full border-[2.5px] border-tinta bg-papel">
-                <div id="progreso" class="h-full w-0 bg-tomate"></div>
-            </div>
-            <button id="cerrarPizarra" class="boton h-9 w-9 bg-crema lg:hidden" aria-label="Cerrar pizarra">
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
-            </button>
+            <ul class="mt-6 flex flex-wrap gap-x-5 gap-y-2 font-ui text-sm font-black text-crema/75">
+                <li>✓ Gratis hasta 15 jugadores</li>
+                <li>✓ Funciona en cualquier móvil</li>
+                <li>✓ Sorteo verificable</li>
+            </ul>
         </div>
-        <div id="tablero" class="grid min-h-0 flex-1 grid-flow-col grid-cols-5 grid-rows-[auto_repeat(15,minmax(0,1fr))] gap-1 sm:gap-1.5"></div>
-    </aside>
 
-    <!-- Anuncio de cada bola -->
-    <div id="anuncio" class="absolute inset-0 z-30 hidden overflow-hidden lg:right-[424px]" aria-hidden="true">
-        <div class="absolute inset-0 grid place-items-center">
-            <div id="franjaTinta" class="absolute left-[-10%] h-[46vmin] w-[120%] bg-tinta"></div>
-            <div id="franja" class="absolute left-[-10%] h-[36vmin] w-[120%]"></div>
-            <div id="anuncioTexto" class="relative flex items-center gap-[4vmin]">
-                <span id="anuncioLetra" class="grid h-[24vmin] w-[24vmin] place-items-center rounded-[4vmin] border-[1vmin] border-tinta bg-crema font-display text-[16vmin] text-tinta shadow-[1.6vmin_1.6vmin_0_#14112b]"></span>
-                <span id="anuncioNumero" class="numero-gigante flex font-display text-[30vmin] leading-none"></span>
+        <div class="relative pb-10 lg:pb-0">
+            <figure class="overflow-hidden rounded-2xl border-[4px] border-tinta bg-tinta shadow-[10px_10px_0_#14112b] -rotate-1">
+                <img src="img/show-partida.jpg" width="1568" height="738" alt="El show proyectado: bombo dorado, bola O-68 saliendo, reacciones de los jugadores y la pizarra con las bolas cantadas" class="block h-auto w-full">
+            </figure>
+            <figure class="absolute -bottom-2 right-2 w-[34%] max-w-[190px] overflow-hidden rounded-[1.6rem] border-[5px] border-tinta bg-tinta shadow-[8px_8px_0_#14112b] rotate-3 sm:right-6">
+                <img src="img/movil-carton.jpg" width="500" height="683" alt="El cartón de un jugador en su móvil, con los números marcados" class="block h-auto w-full">
+            </figure>
+        </div>
+    </section>
+
+    <!-- Cómo funciona -->
+    <section class="bg-crema py-16" aria-labelledby="tituloComo">
+        <div class="mx-auto max-w-6xl px-4 sm:px-6">
+            <h2 id="tituloComo" class="text-center font-display text-3xl sm:text-4xl">Así de fácil</h2>
+            <ol class="mt-10 grid gap-5 md:grid-cols-3">
+                <li class="carta p-5">
+                    <span class="grid h-11 w-11 place-items-center rounded-xl border-[3px] border-tinta bg-girasol font-display text-xl">1</span>
+                    <h3 class="mt-3 font-display text-xl">Crea la sala</h3>
+                    <p class="mt-1 text-sm font-bold text-tinta/75">Elige el juego, el precio en fichas y los premios. Te lleva un minuto.</p>
+                </li>
+                <li class="carta p-5">
+                    <span class="grid h-11 w-11 place-items-center rounded-xl border-[3px] border-tinta bg-menta font-display text-xl">2</span>
+                    <h3 class="mt-3 font-display text-xl">Proyecta el show</h3>
+                    <p class="mt-1 text-sm font-bold text-tinta/75">En un televisor o proyector, desde cualquier ordenador con navegador.</p>
+                </li>
+                <li class="carta p-5">
+                    <span class="grid h-11 w-11 place-items-center rounded-xl border-[3px] border-tinta bg-fucsia font-display text-xl">3</span>
+                    <h3 class="mt-3 font-display text-xl">Todos escanean y juegan</h3>
+                    <p class="mt-1 text-sm font-bold text-tinta/75">Cada invitado escanea el QR, elige su cartón y canta ¡Bingo! desde su móvil.</p>
+                </li>
+            </ol>
+        </div>
+    </section>
+
+    <!-- Lobby y móviles -->
+    <section class="mx-auto grid max-w-6xl items-center gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[1.2fr_1fr]">
+        <figure class="overflow-hidden rounded-2xl border-[4px] border-tinta shadow-[10px_10px_0_#14112b] rotate-1">
+            <img src="img/show-lobby.jpg" width="1559" height="784" loading="lazy" alt="La sala de espera en pantalla: código y QR para unirse, pozo, premios y la lista de jugadores con sus cartones" class="block h-auto w-full">
+        </figure>
+        <div>
+            <h2 class="font-display text-3xl leading-tight text-crema sm:text-4xl">Tus invitados juegan desde su móvil</h2>
+            <ul class="mt-6 grid gap-3 text-base font-bold text-crema/85">
+                <li class="flex gap-3"><span class="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg border-[2.5px] border-tinta bg-girasol font-display text-sm text-tinta">✓</span>Entran escaneando el QR de la pantalla. Sin descargar nada ni crear cuentas.</li>
+                <li class="flex gap-3"><span class="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg border-[2.5px] border-tinta bg-girasol font-display text-sm text-tinta">✓</span>Sus cartones se marcan solos, o los marcan a mano si así lo decides.</li>
+                <li class="flex gap-3"><span class="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg border-[2.5px] border-tinta bg-girasol font-display text-sm text-tinta">✓</span>Cantan ¡Bingo! con un toque y el sistema lo comprueba al instante.</li>
+                <li class="flex gap-3"><span class="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg border-[2.5px] border-tinta bg-girasol font-display text-sm text-tinta">✓</span>Mandan reacciones (🔥 👏 😱) que aparecen en la pantalla grande.</li>
+                <li class="flex gap-3"><span class="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg border-[2.5px] border-tinta bg-girasol font-display text-sm text-tinta">✓</span>Tú controlas todo desde tu propio móvil mientras el show se proyecta.</li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- Modos de juego -->
+    <section class="bg-crema py-16" aria-labelledby="tituloModos">
+        <div class="mx-auto max-w-6xl px-4 sm:px-6">
+            <h2 id="tituloModos" class="text-center font-display text-3xl sm:text-4xl">Tres formas de jugar</h2>
+            <div class="mt-10 grid gap-5 md:grid-cols-3">
+                <article class="carta p-5">
+                    <p class="font-display text-3xl" aria-hidden="true">▦</p>
+                    <h3 class="mt-2 font-display text-xl">Bingo clásico</h3>
+                    <p class="mt-1 text-sm font-bold text-tinta/75">Cartones de 5×5 y hasta 3 premios encadenados: línea, cuatro esquinas, letras L, T o X, marco y cartón lleno.</p>
+                </article>
+                <article class="carta p-5">
+                    <p class="font-display text-3xl" aria-hidden="true">▬</p>
+                    <h3 class="mt-2 font-display text-xl">Fila de 5</h3>
+                    <p class="mt-1 text-sm font-bold text-tinta/75">15 filas de 5 números. La primera que se completa se lleva el pozo. Rápido, fácil y sin cantar.</p>
+                </article>
+                <article class="carta p-5">
+                    <p class="font-display text-3xl" aria-hidden="true">✦</p>
+                    <h3 class="mt-2 font-display text-xl">Elige tus 5</h3>
+                    <p class="mt-1 text-sm font-bold text-tinta/75">Cada jugador elige sus propios 5 números o los pide al azar. Si empatan, el pozo se reparte.</p>
+                </article>
             </div>
         </div>
-    </div>
+    </section>
 
-    <!-- Modo en línea: sala de espera (el escenario 3D sigue girando detrás) -->
-    <div id="lobby" class="lobby absolute inset-0 z-[25] hidden overflow-y-auto px-3 pb-6 pt-28 sm:px-6 sm:pt-36 lg:pb-6" aria-label="Sala de espera">
-        <div class="mx-auto grid max-w-md gap-4 lg:mx-0 lg:h-full lg:max-w-none lg:grid-cols-[minmax(0,440px)_1fr_392px] lg:gap-6">
-            <div class="flex min-h-0 flex-col gap-4">
-                <section class="carta pointer-events-auto p-4 sm:p-5">
-                    <img id="lobbyLogo" alt="" class="mb-3 hidden max-h-24 max-w-[60%] object-contain">
-                    <p id="lobbyNombre" class="etiqueta text-tinta/60">Sala de bingo</p>
-                    <h2 class="mt-1 font-display text-xl leading-none sm:text-2xl">¡Únete con tu móvil!</h2>
-                    <div id="lobbyCodigo" class="mt-4 flex justify-between gap-1.5" aria-label="Código de sala"></div>
-                    <label for="lobbyEnlace" class="etiqueta mt-4 block text-tinta/60">Entra en</label>
-                    <div class="mt-1.5 flex gap-2">
-                        <input id="lobbyEnlace" readonly class="campo min-w-0 flex-1 text-sm" aria-label="Enlace para unirse">
-                        <button id="copiarBtn" type="button" class="boton h-12 shrink-0 bg-girasol px-3 text-xs">Copiar</button>
-                    </div>
-                    <div class="mt-4 flex items-center gap-4">
-                        <div id="lobbyQr" class="h-32 w-32 shrink-0 rounded-xl border-[3px] border-tinta bg-white p-1.5 [&>svg]:h-full [&>svg]:w-full" role="img" aria-label="Código QR para unirse"></div>
-                        <p class="font-ui text-sm font-bold text-tinta/70"><span class="block font-display text-lg leading-tight text-tinta">Escanea y juega</span>Apunta la cámara del móvil al código: se abre la sala directamente.</p>
-                    </div>
-                </section>
-                <section class="carta pointer-events-auto p-4 sm:p-5">
-                    <div class="flex items-end justify-between gap-3">
-                        <div>
-                            <p class="etiqueta text-tinta/60">Pozo</p>
-                            <p class="font-display text-3xl leading-none sm:text-4xl"><span id="lobbyPozo">0</span> <span class="text-base text-tinta/50">fichas</span></p>
-                        </div>
-                        <div class="text-right">
-                            <p id="lobbyUnidades" class="etiqueta text-tinta/60">Cartones</p>
-                            <p class="font-display text-xl leading-none"><span id="lobbyVendidos">0</span><span class="text-sm text-tinta/40">/<span id="lobbyTotal">0</span></span></p>
-                        </div>
-                    </div>
-                    <div class="mt-3 h-3.5 overflow-hidden rounded-full border-[2.5px] border-tinta bg-papel">
-                        <div id="lobbyBarra" class="h-full w-0 bg-menta transition-[width] duration-500"></div>
-                    </div>
-                    <p id="lobbyReglas" class="etiqueta mt-2 text-tinta/60"></p>
-                    <ol id="lobbyPremios" class="mt-3 grid gap-2"></ol>
-                    <div id="lobbyExtras" class="mt-3 grid gap-2 empty:hidden"></div>
-                </section>
-                <section id="lobbyJusto" class="carta pointer-events-auto hidden items-center gap-3 px-4 py-3">
-                    <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg border-[2.5px] border-tinta bg-menta font-display text-base" aria-hidden="true">✓</span>
-                    <p class="min-w-0 text-sm font-bold leading-snug text-tinta/70">Partida verificable: el orden de las bolas ya está comprometido
-                        <span class="mt-0.5 block font-ui text-xs font-black tracking-wider text-tinta">Compromiso <code id="lobbyCompromiso" class="rounded bg-papel px-1"></code>…</span></p>
-                </section>
+    <!-- Extras -->
+    <section class="mx-auto max-w-6xl px-4 py-16 sm:px-6" aria-labelledby="tituloExtras">
+        <h2 id="tituloExtras" class="text-center font-display text-3xl text-crema sm:text-4xl">Para que nadie se despegue de la pantalla</h2>
+        <ul class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <li class="carta p-4"><p class="font-black">⭐ Bola dorada</p><p class="mt-1 text-sm font-bold text-tinta/70">Si sale antes de que haya ganador, el premio se duplica.</p></li>
+            <li class="carta p-4"><p class="font-black">💰 Bote acumulado</p><p class="mt-1 text-sm font-bold text-tinta/70">Crece en cada ronda hasta que alguien gana en pocas bolas.</p></li>
+            <li class="carta p-4"><p class="font-black">🔁 Rondas seguidas</p><p class="mt-1 text-sm font-bold text-tinta/70">Al terminar, la siguiente empieza sola y cada uno repite sus jugadas.</p></li>
+            <li class="carta p-4"><p class="font-black">⏱️ Cuenta atrás y repetición</p><p class="mt-1 text-sm font-bold text-tinta/70">3, 2, 1 antes de empezar y la bola ganadora a cámara lenta.</p></li>
+            <li class="carta p-4"><p class="font-black">🗣️ Narrador</p><p class="mt-1 text-sm font-bold text-tinta/70">Canta cada bola, con frases de bingo o en inglés y portugués.</p></li>
+            <li class="carta p-4"><p class="font-black">✅ Sorteo verificable</p><p class="mt-1 text-sm font-bold text-tinta/70">Al terminar, cualquiera puede comprobar que nadie cambió las bolas.</p></li>
+        </ul>
+    </section>
+
+    <!-- Para quién -->
+    <section class="bg-crema py-16" aria-labelledby="tituloQuien">
+        <div class="mx-auto max-w-6xl px-4 text-center sm:px-6">
+            <h2 id="tituloQuien" class="font-display text-3xl sm:text-4xl">Para cualquier evento</h2>
+            <ul class="mx-auto mt-8 flex max-w-3xl flex-wrap justify-center gap-3 font-ui text-sm font-black">
+                <li class="rounded-full border-[3px] border-tinta bg-girasol px-4 py-2 shadow-duro-sm">🏫 Colegios y kermeses</li>
+                <li class="rounded-full border-[3px] border-tinta bg-menta px-4 py-2 shadow-duro-sm">🎉 Fiestas familiares</li>
+                <li class="rounded-full border-[3px] border-tinta bg-fucsia px-4 py-2 shadow-duro-sm">🏢 Eventos de empresa</li>
+                <li class="rounded-full border-[3px] border-tinta bg-cobalto px-4 py-2 text-crema shadow-duro-sm">🎤 Animadores</li>
+                <li class="rounded-full border-[3px] border-tinta bg-tomate px-4 py-2 text-crema shadow-duro-sm">⛪ Parroquias y asociaciones</li>
+                <li class="rounded-full border-[3px] border-tinta bg-white px-4 py-2 shadow-duro-sm">👵 Casas de reposo</li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- Precios -->
+    <section class="mx-auto max-w-6xl px-4 py-16 sm:px-6" aria-labelledby="tituloPrecios">
+        <h2 id="tituloPrecios" class="text-center font-display text-3xl text-crema sm:text-4xl">Empieza gratis</h2>
+        <div class="mt-10 grid gap-5 md:grid-cols-3">
+            <div class="carta p-5">
+                <p class="font-display text-xl">Gratis</p>
+                <p class="mt-2 font-display text-4xl">S/ 0</p>
+                <p class="mt-2 text-sm font-bold text-tinta/70">Hasta 15 jugadores y 1 premio. Todos los modos y extras.</p>
             </div>
-
-            <div class="flex flex-col items-center justify-end gap-3 lg:pb-2">
-                <button id="empezarBtn" type="button" class="boton pointer-events-auto h-16 bg-girasol px-10 font-display text-2xl normal-case sm:h-20 sm:text-3xl" disabled>¡Empezar!</button>
-                <p id="empezarAyuda" class="rounded-full bg-escenario/70 px-3 py-1 text-center font-ui text-sm font-bold text-crema/80">Esperando a que alguien compre un cartón</p>
-                <div id="lobbyCuenta" class="hidden items-center gap-2 rounded-full bg-menta px-4 py-1.5 font-ui font-black text-tinta shadow-duro-sm">
-                    <span>Empieza solo en <span id="lobbyCuentaSeg" class="font-display text-xl"></span> s</span>
-                    <button id="detenerCuentaBtn" type="button" class="boton pointer-events-auto h-8 bg-crema px-2 text-[10px]">Detener</button>
-                </div>
+            <div class="carta border-[4px] p-5 shadow-duro-lg">
+                <p class="font-display text-xl">Pro · Evento</p>
+                <p class="mt-2 font-display text-4xl">S/ 25</p>
+                <p class="mt-2 text-sm font-bold text-tinta/70">24 horas: hasta 100 jugadores, 3 premios y el logo de tu evento.</p>
             </div>
-
-            <section class="carta pointer-events-auto flex min-h-0 flex-col p-4 sm:p-5" aria-labelledby="tituloJugadores">
-                <div class="flex items-baseline justify-between gap-3">
-                    <h2 id="tituloJugadores" class="font-display text-xl leading-none sm:text-2xl">Jugadores</h2>
-                    <p class="etiqueta text-tinta/60"><span id="lobbyConectados">0</span> conectados</p>
-                </div>
-                <button id="vincularBtn" type="button" class="boton mt-2 h-9 w-full bg-crema text-[11px]">📱 Controlar desde mi móvil</button>
-                <p id="lobbyPlan" class="mt-2 hidden rounded-xl border-[2.5px] border-tinta bg-papel px-3 py-1.5 font-ui text-xs font-bold"></p>
-                <ul id="lobbyJugadores" class="mt-3 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1"></ul>
-            </section>
+            <div class="carta p-5">
+                <p class="font-display text-xl">Pro · Mensual</p>
+                <p class="mt-2 font-display text-4xl">S/ 60</p>
+                <p class="mt-2 text-sm font-bold text-tinta/70">30 días de salas Pro ilimitadas. Ideal para animadores.</p>
+            </div>
         </div>
+        <p class="mt-6 text-center"><a href="precios.html" class="font-ui font-black text-crema underline">Ver los planes en detalle</a></p>
+    </section>
+
+    <!-- Llamada final -->
+    <section class="px-4 pb-16 sm:px-6">
+        <div class="carta mx-auto max-w-4xl bg-girasol p-6 text-center sm:p-10">
+            <h2 class="font-display text-3xl leading-tight sm:text-4xl">¿Organizas un evento?</h2>
+            <p class="mx-auto mt-3 max-w-xl text-base font-bold">Prueba gratis hoy mismo, o escríbenos y te ayudamos a preparar el bingo de tu evento.</p>
+            <div class="mt-6 flex flex-wrap justify-center gap-3">
+                <a href="sala.html" class="boton h-14 bg-tinta px-6 font-display text-xl normal-case text-crema">Crear sala gratis</a>
+                <a href="https://wa.me/51933240664?text=Hola%2C%20quiero%20informaci%C3%B3n%20de%20Bingo%20Show%20para%20mi%20evento." target="_blank" rel="noopener" class="boton h-14 bg-menta px-6 text-sm">Escríbenos por WhatsApp</a>
+            </div>
+        </div>
+    </section>
+</main>
+
+<footer class="border-t-[3px] border-tinta bg-tinta/40">
+    <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-6 font-ui text-sm font-bold text-crema/70 sm:px-6">
+        <p>© 2026 Bingo Show · Las fichas son virtuales y no tienen valor en dinero.</p>
+        <nav class="flex flex-wrap gap-4" aria-label="Pie de página">
+            <a href="precios.html" class="hover:text-crema">Precios</a>
+            <a href="jugar.html" class="hover:text-crema">Jugar</a>
+            <a href="show.html" class="hover:text-crema">Show sin conexión</a>
+            <a href="carton.html" class="hover:text-crema">Imprimir cartones</a>
+            <a href="terminos.html" class="hover:text-crema">Términos</a>
+        </nav>
     </div>
-
-    <!-- Fin del juego -->
-    <div id="fin" class="absolute inset-0 z-20 hidden place-items-center lg:right-[424px]">
-        <div id="finSello" class="carta bg-girasol px-6 py-4 text-center shadow-duro-lg">
-            <p class="font-display text-3xl sm:text-5xl">¡Se acabaron!</p>
-            <p class="etiqueta mt-1">Salieron las 75 bolas</p>
-        </div>
-    </div>
-</div>
-
-<!-- Destello -->
-<div id="flash" class="pointer-events-none fixed inset-0 z-[45] bg-crema opacity-0"></div>
-
-<!-- Modal: ¡Bingo! -->
-<div id="modalBingo" class="fixed inset-0 z-40 hidden flex-col items-center gap-6 overflow-y-auto p-4 [justify-content:safe_center] sm:gap-8" role="dialog" aria-modal="true" aria-labelledby="tituloBingo">
-    <div class="modal-fondo fixed inset-0 bg-escenario/85" data-cerrar></div>
-    <h2 id="tituloBingo" class="relative flex gap-2 sm:gap-4" aria-label="¡Bingo!">
-        <span class="letra-bingo bg-tomate" data-rot="-8">B</span>
-        <span class="letra-bingo bg-girasol" data-rot="5">I</span>
-        <span class="letra-bingo bg-menta" data-rot="-4">N</span>
-        <span class="letra-bingo bg-cobalto text-crema" data-rot="7">G</span>
-        <span class="letra-bingo bg-fucsia" data-rot="-6">O</span>
-    </h2>
-    <div class="modal-caja carta relative w-full max-w-md p-5 shadow-duro-lg sm:p-6">
-        <div id="sello" class="pointer-events-none absolute -right-2 -top-7 z-10 hidden rounded-xl border-4 px-4 py-1.5 font-display text-2xl shadow-duro sm:-right-6 sm:text-3xl"></div>
-        <!-- Modo en línea: ganadores verificados por el servidor -->
-        <div id="bingoEnLinea" class="hidden" aria-live="polite"></div>
-        <div id="bingoLocal">
-        <p class="text-center font-ui font-bold text-tinta/70">
-            Juego en pausa · <strong id="bingoBolas" class="text-tinta">0</strong> <span id="bingoBolasPalabra">bolas</span> en <strong id="bingoTiempo" class="text-tinta">00:00</strong>
-        </p>
-        <div class="mt-5 flex items-baseline justify-between gap-2">
-            <span id="tituloModalidad" class="etiqueta">Modalidad</span>
-            <span class="etiqueta text-tinta/50">Serie <span id="serieActual" class="text-tinta">—</span></span>
-        </div>
-        <div id="patrones" role="radiogroup" aria-labelledby="tituloModalidad" class="mt-2 grid grid-cols-3 gap-1.5">
-            <button type="button" role="radio" class="opcion" data-patron="linea" title="Fila, columna o diagonal">Línea</button>
-            <button type="button" role="radio" class="opcion" data-patron="esquinas">4 esquinas</button>
-            <button type="button" role="radio" class="opcion" data-patron="lleno">Lleno</button>
-        </div>
-        <label for="codigoCarton" class="etiqueta mt-4 block">Verificar cartón</label>
-        <div class="mt-2 flex gap-2">
-            <input id="codigoCarton" data-autofoco spellcheck="false" autocomplete="off" placeholder="Nº o código, ej: 42 o K7QX-042"
-                   class="campo min-w-0 flex-1 uppercase placeholder:normal-case">
-            <button id="verificarBtn" class="boton h-12 shrink-0 bg-girasol px-4">Verificar</button>
-        </div>
-
-        <details id="aMano" class="mt-3">
-            <summary class="etiqueta cursor-pointer text-tinta/60">¿Cartón sin código? Escribe sus números</summary>
-            <textarea id="numerosCarton" rows="2" placeholder="Los números de la línea ganadora, ej: 5 18 33 52 71"
-                      class="campo mt-2 h-auto w-full resize-none py-3"></textarea>
-            <button id="verificarNumerosBtn" class="boton mt-2 h-11 w-full bg-crema">Verificar números</button>
-        </details>
-
-        <div id="resultado" class="mt-4 hidden">
-            <p id="resultadoTexto" class="mb-3 text-center font-ui font-black" aria-live="polite"></p>
-            <div id="resultadoCarton" class="flex justify-center"></div>
-            <div id="resultadoChips" class="flex flex-wrap justify-center gap-2"></div>
-        </div>
-        </div>
-
-        <div id="bingoBotones" class="mt-6 grid grid-cols-2 gap-3">
-            <button id="seguirBtn" class="boton h-12 bg-crema">Seguir</button>
-            <button id="nuevaPartidaBtn" class="boton h-12 bg-tinta text-crema">Nueva partida</button>
-        </div>
-    </div>
-</div>
-
-<!-- Modal: confirmar reinicio -->
-<div id="modalReset" class="fixed inset-0 z-40 hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="tituloReset">
-    <div class="modal-fondo absolute inset-0 bg-escenario/80" data-cerrar></div>
-    <div class="modal-caja carta relative w-full max-w-sm p-6 text-center shadow-duro-lg">
-        <h2 id="tituloReset" class="font-display text-2xl sm:text-3xl">¿Reiniciar?</h2>
-        <p id="textoReset" class="mt-2 font-ui font-bold text-tinta/70">Las bolas vuelven al bombo y el tiempo empieza de cero.</p>
-        <div class="mt-6 grid grid-cols-2 gap-3">
-            <button class="boton h-12 bg-crema" data-cerrar>Cancelar</button>
-            <button id="confirmarResetBtn" class="boton h-12 bg-tomate text-crema">Reiniciar</button>
-        </div>
-    </div>
-</div>
-
-<!-- Modo en línea: ventana de ¡Bingo! abierta mientras el servidor verifica -->
-<div id="ventanaBingo" class="pointer-events-none fixed left-1/2 top-1/3 z-[35] hidden -translate-x-1/2 lg:left-[calc((100%-424px)/2)]" role="status" aria-live="assertive">
-    <div class="ventana-bingo carta flex items-center gap-3 bg-tomate px-5 py-3 text-crema shadow-duro-lg">
-        <span id="ventanaTitulo" class="font-display text-2xl sm:text-4xl">¡Bingo cantado!</span>
-        <span class="etiqueta">Verificando…</span>
-    </div>
-</div>
-
-<!-- Modo en línea: aviso cuando la sala no se puede abrir como anfitrión -->
-<div id="salaAviso" class="fixed inset-0 z-[58] hidden place-items-center bg-escenario/85 p-4" role="dialog" aria-modal="true" aria-labelledby="salaAvisoTitulo">
-    <div class="carta w-full max-w-md p-6 text-center shadow-duro-lg">
-        <h2 id="salaAvisoTitulo" class="font-display text-2xl sm:text-3xl"></h2>
-        <p id="salaAvisoTexto" class="mt-2 font-ui font-bold text-tinta/70"></p>
-        <div id="salaAvisoAcciones" class="mt-6 grid gap-3"></div>
-    </div>
-</div>
-
-<!-- Aviso flotante -->
-<div id="aviso" class="carta pointer-events-none fixed left-1/2 top-24 z-50 whitespace-nowrap px-4 py-2 font-ui text-sm font-black opacity-0 sm:top-28"></div>
-
-<!-- Telón de apertura -->
-<div id="telon" class="pointer-events-none fixed inset-0 z-[60] flex" aria-hidden="true">
-    <div class="telon telon-izq h-full w-1/2 border-r-4 border-tinta"></div>
-    <div class="telon telon-der h-full w-1/2 border-l-4 border-tinta"></div>
-</div>
-
-<script src="dist/app.js"></script>
+</footer>
 </body>
 </html>

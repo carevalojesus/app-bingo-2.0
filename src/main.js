@@ -64,7 +64,7 @@ let finPendiente = null;
 let partida = 0;
 // Bola que muestra ahora la ficha "Bola actual" (pasa al historial cuando llega otra)
 let bolaMostrada = null;
-// Modo en línea (index.html?sala=CODIGO): controlador de src/en-linea/anfitrion.js.
+// Modo en línea (show.html?sala=CODIGO): controlador de src/en-linea/anfitrion.js.
 // Si es null, el show funciona sin conexión como siempre.
 let enLinea = null;
 // Animación de entrada (telón, pizarra…): fijarBolas espera a que termine para girar las casillas

@@ -1,4 +1,4 @@
-// Show en modo en línea (index.html?sala=CODIGO): el anfitrión proyecta el
+// Show en modo en línea (show.html?sala=CODIGO): el anfitrión proyecta el
 // escenario y el servidor saca las bolas. Protocolo: docs/en-linea.md
 //
 // main.js solo crea este controlador si hay ?sala= en la URL; sin él, el show
@@ -80,7 +80,7 @@ export function iniciarAnfitrion(codigo, show) {
         mostrarAvisoSala('Esta sala no es tuya', `En este dispositivo no está guardada la llave de anfitrión de la sala ${codigo}. Si vienes a jugar, entra desde el móvil.`, [
             { texto: 'Jugar en esta sala', href: `jugar.html?sala=${codigo}`, clase: 'bg-girasol' },
             { texto: 'Crear otra sala', href: 'sala.html', clase: 'bg-crema' },
-            { texto: 'Show sin conexión', href: 'index.html', clase: 'bg-crema' },
+            { texto: 'Show sin conexión', href: 'show.html', clase: 'bg-crema' },
         ]);
         return controlador();
     }
@@ -92,7 +92,7 @@ export function iniciarAnfitrion(codigo, show) {
             if (/no existe|404|encontr/i.test(error.message)) {
                 mostrarAvisoSala('Sala no encontrada', `No hay ninguna sala con el código ${codigo}. Puede que haya caducado.`, [
                     { texto: 'Crear una sala', href: 'sala.html', clase: 'bg-girasol' },
-                    { texto: 'Show sin conexión', href: 'index.html', clase: 'bg-crema' },
+                    { texto: 'Show sin conexión', href: 'show.html', clase: 'bg-crema' },
                 ]);
             } else {
                 conectar(); // error de red: lo intenta el WebSocket con sus reintentos
